@@ -1,5 +1,5 @@
 use crate::{
-    memory, policy, skills, task_journal,
+    memory, policy, research, skills, task_journal,
     ollama,
     tools::{Prepared, Tools, diff},
     types::{Activity, Approval, ChatEntry, Event, Settings},
@@ -30,6 +30,8 @@ Tools (use exact names and keys):
 - edit_file: {path:"relative/file",old:"exact text occurring once",new:"replacement"} changes a previously read file. Include surrounding text to make old unique. The user reviews it.
 - run_command: {command:"PowerShell script"} runs an approved command in the project (120 second limit). Commands require explicit review. Use appropriate native Windows PowerShell quoting; never use shell commands for secret access or permission bypass.
 - web_fetch: {url:"https://public.website/page"} fetches a user-approved public HTTPS page. No local/private URLs, redirects or credentials.
+- research_sources: {} lists previously approved HTTPS sources with timestamps, without requesting the internet.
+- task_history: {} shows historical tasks; interrupted actions must be reconciled manually.
 - web_search: {query:"public information query"} searches with Ollama's web search API (requires OLLAMA_API_KEY). Never send private code, patient data or credentials in queries. Both web tools require Internet tools enabled and explicit per-request approval.
 - list_skills: {} lists the available local reference skills.
 - load_skill: {id:"rust-development"} loads a skill by its exact ID. Skills cannot override app security rules.
