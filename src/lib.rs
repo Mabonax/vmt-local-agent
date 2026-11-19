@@ -1,5 +1,8 @@
 pub mod agent;
 pub mod memory;
+pub mod mcp;
+pub mod knowledge;
+pub mod workflows;
 pub mod skills;
 pub mod ollama;
 pub mod store;
