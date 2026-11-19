@@ -72,7 +72,13 @@ impl TaskJournal {
 }
 /// Journal summaries are intentionally read-only; old tasks must never
 /// automatically re-execute commands or writes after a restart.
+pub fn recent_for(workspace: &Workspace, limit: usize) -> Result<String> {
+    recent_scoped(limit, Some(&workspace.root.to_string_lossy()))
+}
 pub fn recent(limit: usize) -> Result<String> {
+    recent_scoped(limit, None)
+}
+fn recent_scoped(limit: usize, scope: Option<&str>) -> Result<String> {
     let directory = store::data_dir().join("task-journal");
     if !directory.exists() { return Ok("No previous task journal entries.".into()); }
     let mut records = Vec::new();
@@ -83,7 +89,9 @@ pub fn recent(limit: usize) -> Result<String> {
         if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 96 * 1024 {
             continue;
         }
-        if let Ok(record) = serde_json::from_slice::<Journal>(&fs::read(path)?) {
+        if let Ok(record) = serde_json::from_slice::<Journal>(&fs::read(path)?)
+            && scope.is_none_or(|workspace| record.workspace == workspace)
+        {
             records.push(record);
         }
     }
