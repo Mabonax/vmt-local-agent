@@ -231,12 +231,25 @@ impl Workspace {
         let mut temp = tempfile::NamedTempFile::new_in(parent)?;
         temp.write_all(content.as_bytes())?;
         temp.as_file().sync_all()?;
+        // Recheck as close to persistence as possible. This reduces the window
+        // for an external editor to change the target after the initial check.
+        // This is not a replacement for OS-level handle-based path isolation.
+        self.resolve(relative, true)?;
         match expected {
-            Some(_) => {
+            Some(old) => {
+                ensure!(
+                    self.read(relative)? == old,
+                    "The file changed during preparation; the reviewed edit was not applied"
+                );
                 temp.persist(&path)
                     .context("Could not atomically replace the reviewed file")?;
             }
             None => {
+                ensure!(
+                    fs::symlink_metadata(&path)
+                        .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
+                    "The target appeared during preparation; it was preserved"
+                );
                 temp.persist_noclobber(&path)
                     .context("A file appeared; no existing file was replaced")?;
             }

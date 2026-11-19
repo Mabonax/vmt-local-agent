@@ -313,15 +313,16 @@ fn run_command(workspace: &Workspace, script: &str, cancel: &Arc<AtomicBool>) ->
             output.push('\n');
         }
     }
-    Ok(format!(
-        "{}\n{}",
-        if interrupted {
-            "Command stopped or exceeded the 120-second limit".into()
-        } else {
-            format!("Exit status: {}", status.unwrap())
-        },
-        clip(&output, 12_000)
-    ))
+    let output = clip(&output, 12_000);
+    if interrupted {
+        bail!("Command stopped or exceeded the 120-second limit. Execution may have had side effects.\n{output}");
+    }
+    let status = status.context("Command ended without an exit status")?;
+    ensure!(
+        status.success(),
+        "Command failed with exit status {status}.\n{output}"
+    );
+    Ok(format!("Exit status: {status}\n{output}"))
 }
 
 pub fn public_ip(ip: IpAddr) -> bool {
@@ -548,6 +549,35 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn unsuccessful_shell_command_is_reported_as_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path()).unwrap();
+        #[cfg(windows)]
+        let script = "Write-Output 'failure fixture'; exit 7";
+        #[cfg(not(windows))]
+        let script = "printf 'failure fixture\\n'; exit 7";
+        let err = run_command(&workspace, script, &Arc::new(AtomicBool::new(false)))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("failed with exit status"), "{err}");
+        assert!(err.contains("failure fixture"), "{err}");
+    }
+
+    #[test]
+    fn successful_shell_command_returns_its_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path()).unwrap();
+        #[cfg(windows)]
+        let script = "Write-Output 'success fixture'";
+        #[cfg(not(windows))]
+        let script = "printf 'success fixture\\n'";
+        let output =
+            run_command(&workspace, script, &Arc::new(AtomicBool::new(false))).unwrap();
+        assert!(output.contains("success fixture"), "{output}");
+        assert!(output.contains("Exit status:"), "{output}");
     }
 
     #[test]

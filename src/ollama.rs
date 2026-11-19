@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail, ensure};
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -208,7 +208,7 @@ pub fn next_turn(
         );
     }
     let mut reader = BufReader::new(response);
-    let mut line = String::new();
+    let mut packet_bytes = Vec::new();
     let mut text = String::new();
     let mut thinking = String::new();
     let mut calls = Vec::new();
@@ -219,17 +219,19 @@ pub fn next_turn(
         if cancel.load(Ordering::Relaxed) {
             bail!("Stopped");
         }
-        line.clear();
-        // read_until is bounded by the HTTP timeout; cancellation closes the request
-        // as soon as the next chunk is received. No partial action is ever executed.
-        if reader.read_line(&mut line)? == 0 {
+        packet_bytes.clear();
+        // Bound each streamed JSON record before allocating it. A malicious or
+        // malformed local endpoint must not supply an unbounded single line.
+        // Cancellation is checked between records; no partial action executes.
+        let count = (&mut reader)
+            .take(1024 * 1024 + 1)
+            .read_until(b'\n', &mut packet_bytes)?;
+        if count == 0 {
             break;
         }
-        ensure!(
-            line.len() <= 1024 * 1024 && text.len() <= 1024 * 1024,
-            "Model response exceeded the size limit"
-        );
-        let packet: Value = serde_json::from_str(&line).context("Invalid Ollama stream")?;
+        ensure!(count <= 1024 * 1024, "Ollama stream record exceeded 1 MiB");
+        let packet: Value = serde_json::from_slice(&packet_bytes)
+            .context("Invalid Ollama stream")?;
         if packet.get("error").is_some() {
             bail!("Ollama reported an inference error. Check its logs and the context size.");
         }
@@ -239,6 +241,10 @@ pub fn next_turn(
         if let Some(part) = packet["message"]["thinking"].as_str() {
             thinking.push_str(part);
         }
+        ensure!(
+            text.len() <= 1024 * 1024 && thinking.len() <= 1024 * 1024,
+            "Model response exceeded the size limit"
+        );
         if let Some(chunk_calls) = packet["message"]["tool_calls"].as_array() {
             calls.extend(chunk_calls.iter().cloned());
         }
