@@ -77,6 +77,7 @@ struct Session {
     rx: mpsc::Receiver<Wire>,
     next_id: u64,
     discovered: HashSet<String>,
+    schemas: HashMap<String, Value>,
 }
 impl Drop for Session {
     fn drop(&mut self) {
@@ -146,6 +147,11 @@ fn spawn(server: &Server, cancel: &AtomicBool) -> Result<Session> {
             cmd.env(key, value);
         }
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     let mut child = cmd.spawn().context("Cannot start configured MCP executable")?;
     let stdout = child.stdout.take().context("MCP stdout unavailable")?;
     let (tx, rx) = mpsc::channel();
@@ -174,6 +180,7 @@ fn spawn(server: &Server, cancel: &AtomicBool) -> Result<Session> {
         rx,
         next_id: 1,
         discovered: HashSet::new(),
+        schemas: HashMap::new(),
     };
     let init = request(&mut session, "initialize", json!({
         "protocolVersion":"2025-11-25",
@@ -187,6 +194,17 @@ fn spawn(server: &Server, cancel: &AtomicBool) -> Result<Session> {
     }))?;
     Ok(session)
 }
+/// Retrieve a precise cached schema after reviewed tools/list discovery.
+pub fn tool_schema(server: &str, tool: &str) -> Result<String> {
+    ensure!(valid_id(server) && !tool.is_empty() && tool.len() <= 128,
+        "Invalid MCP server/tool ID");
+    let active = sessions().lock().map_err(|_| anyhow::anyhow!("MCP lock poisoned"))?;
+    let session = active.get(server).context("Run reviewed mcp_tools before requesting a schema")?;
+    let schema = session.schemas.get(tool).context("MCP tool was not discovered")?;
+    Ok(format!("UNTRUSTED MCP TOOL DEFINITION {} / {}:\n{}",
+        server, tool, clip(&serde_json::to_string_pretty(schema)?, 12_000)))
+}
+
 /// Invoked only following review of the displayed MCP operation. Sessions stay
 /// active within a task, then the agent runtime closes them with disconnect_all.
 pub fn run(server_id: &str, operation: &str, tool: &str,
@@ -219,9 +237,10 @@ pub fn run(server_id: &str, operation: &str, tool: &str,
         };
         if operation == "tools/list" {
             let list = result["tools"].as_array().context("MCP server has no tools list")?;
-            session.discovered = list.iter()
-                .filter_map(|item| item["name"].as_str().map(str::to_owned))
+            session.schemas = list.iter()
+                .filter_map(|item| item["name"].as_str().map(|name| (name.to_owned(), item.clone())))
                 .collect();
+            session.discovered = session.schemas.keys().cloned().collect();
             let entries: Vec<String> = list.iter().take(50).map(|item| {
                 format!("{}: {}\nSchema: {}", item["name"].as_str().unwrap_or("?"),
                     clip(item["description"].as_str().unwrap_or(""), 130),
