@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     io::{BufRead, BufReader, Read, Write},
     path::Path,
@@ -53,6 +53,14 @@ fn registry() -> Result<Registry> {
     }
     Ok(registry)
 }
+pub fn describe_server(id: &str) -> Result<String> {
+    ensure!(valid_id(id), "Invalid MCP server ID");
+    let server = registry()?.servers.into_iter()
+        .find(|server| server.id == id).context("MCP server not registered")?;
+    Ok(format!("Executable: {}\nArguments: {}", server.command,
+        clip(&serde_json::to_string(&server.args)?, 2000)))
+}
+
 pub fn configured_servers() -> Result<String> {
     let servers = registry()?.servers;
     if servers.is_empty() {
@@ -68,6 +76,7 @@ struct Session {
     child: Child,
     rx: mpsc::Receiver<Wire>,
     next_id: u64,
+    discovered: HashSet<String>,
 }
 impl Drop for Session {
     fn drop(&mut self) {
@@ -164,6 +173,7 @@ fn spawn(server: &Server, cancel: &AtomicBool) -> Result<Session> {
         child,
         rx,
         next_id: 1,
+        discovered: HashSet::new(),
     };
     let init = request(&mut session, "initialize", json!({
         "protocolVersion":"2025-11-25",
@@ -202,11 +212,16 @@ pub fn run(server_id: &str, operation: &str, tool: &str,
         let result = if operation == "tools/list" {
             request(session, "tools/list", json!({}), cancel, Duration::from_secs(60))?
         } else {
+            ensure!(session.discovered.contains(tool),
+                "Call mcp_tools and select a discovered tool before invoking it");
             request(session, "tools/call", json!({"name":tool,"arguments":args}),
                 cancel, Duration::from_secs(60))?
         };
         if operation == "tools/list" {
             let list = result["tools"].as_array().context("MCP server has no tools list")?;
+            session.discovered = list.iter()
+                .filter_map(|item| item["name"].as_str().map(str::to_owned))
+                .collect();
             let entries: Vec<String> = list.iter().take(50).map(|item| {
                 format!("{}: {}\nSchema: {}", item["name"].as_str().unwrap_or("?"),
                     clip(item["description"].as_str().unwrap_or(""), 130),
