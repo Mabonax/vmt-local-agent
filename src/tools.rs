@@ -1,5 +1,5 @@
 use crate::{
-    memory, skills,
+    knowledge, mcp, memory, skills, workflows,
     types::Proposal,
     workspace::{Workspace, clip},
 };
@@ -42,6 +42,50 @@ impl Tools {
     ) -> Result<Prepared> {
         let path = args["path"].as_str().unwrap_or(".");
         match name {
+            "list_workflows" => Ok(Prepared::Output(workflows::catalog())),
+            "workflow_status" => Ok(Prepared::Output(workflows::status(&self.workspace)?)),
+            "workflow_start" | "workflow_advance" | "workflow_finish" => {
+                ensure!(!read_only, "Read-only mode: workflow changes are disabled");
+                let action = match name {
+                    "workflow_start" => "start",
+                    "workflow_advance" => "advance",
+                    _ => "finish",
+                };
+                let kind = args["kind"].as_str().unwrap_or("").to_string();
+                let evidence = args["evidence"].as_str().unwrap_or("").to_string();
+                ensure!(kind.len() <= 64 && evidence.len() <= 500, "Workflow arguments exceed limits");
+                Ok(Prepared::Review(Proposal::Workflow {
+                    action: action.into(), kind, evidence,
+                }))
+            }
+            "mcp_servers" => Ok(Prepared::Output(mcp::configured_servers()?)),
+            "mcp_tools" | "mcp_call" => {
+                ensure!(!read_only, "Read-only mode: external MCP execution disabled");
+                let server = string(args, "server")?.to_string();
+                ensure!(server.len() <= 64, "MCP server ID too long");
+                let tool = args["tool"].as_str().unwrap_or("").to_string();
+                let arguments = args["arguments"].as_object()
+                    .map(|_| args["arguments"].clone()).unwrap_or_else(|| json!({}));
+                ensure!(arguments.to_string().len() <= 16_000, "MCP arguments exceed limits");
+                ensure!(tool.len() <= 128, "MCP tool name too long");
+                if name == "mcp_call" {
+                    ensure!(!tool.is_empty(), "MCP call requires a tool name");
+                    ensure!(args["arguments"].is_object(), "MCP call arguments must be an object");
+                }
+                Ok(Prepared::Review(Proposal::Mcp {
+                    server, tool, arguments,
+                    operation: if name == "mcp_tools" { "tools/list" } else { "tools/call" }.into(),
+                }))
+            }
+            "index_knowledge" => {
+                ensure!(!read_only, "Read-only mode: knowledge indexing is disabled");
+                let model = string(args, "model")?.to_string();
+                ensure!(model.len() <= 100, "Embedding model name too long");
+                Ok(Prepared::Review(Proposal::KnowledgeIndex { model }))
+            }
+            "knowledge_search" => Ok(Prepared::Output(knowledge::search(
+                &self.workspace, string(args, "query")?,
+            )?)),
             "list_skills" => Ok(Prepared::Output(skills::catalog())),
             "load_skill" => Ok(Prepared::Output(skills::load(string(args, "id")?)?)),
             "memory_search" => Ok(Prepared::Output(memory::search(
@@ -213,6 +257,11 @@ impl Tools {
                 memory::add_reviewed_note(&self.workspace, content)?;
                 Ok("Approved project memory note saved locally.".into())
             }
+            Proposal::Mcp { server, operation, tool, arguments } =>
+                mcp::run(server, operation, tool, arguments),
+            Proposal::KnowledgeIndex { model } => knowledge::index(&self.workspace, model),
+            Proposal::Workflow { action, kind, evidence } =>
+                workflows::apply_reviewed(&self.workspace, action, kind, evidence),
         }
     }
 }
@@ -231,6 +280,16 @@ pub fn diff(proposal: &Proposal) -> String {
         Proposal::Command { command } => command.clone(),
         Proposal::MemoryNote { content } => format!(
             "Save project memory note (stored locally):\n{content}"
+        ),
+        Proposal::Mcp { server, operation, tool, arguments } => format!(
+            "Run local MCP server process as your Windows user (NOT sandboxed).\nServer: {server}\nOperation: {operation}\nTool: {tool}\nArguments:\n{}",
+            serde_json::to_string_pretty(arguments).unwrap_or_default()
+        ),
+        Proposal::KnowledgeIndex { model } => format!(
+            "Index up to 45 allowed project text files with local Ollama embedding model {model}. This stores text snippets and vectors as plaintext in the application data directory. Existing index will be replaced."
+        ),
+        Proposal::Workflow { action, kind, evidence } => format!(
+            "Update persisted project workflow:\nAction: {action}\nKind: {kind}\nEvidence: {evidence}"
         ),
         Proposal::Web { tool, args } => format!(
             "{tool}\n{}",
