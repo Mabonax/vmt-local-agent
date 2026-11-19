@@ -4,7 +4,7 @@
 use crate::{store, workspace::{Workspace, clip}};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::PathBuf};
+use std::{fs, io::Write, path::{Path, PathBuf}};
 
 const MAX_EVENTS: usize = 200;
 const MAX_NOTES: usize = 50;
@@ -46,22 +46,26 @@ fn memory_path(workspace: &Workspace) -> PathBuf {
     store::data_dir().join("memory").join(format!("{}.json", workspace_key(&name)))
 }
 
-fn load(workspace: &Workspace) -> Result<MemoryFile> {
-    let path = memory_path(workspace);
-    let canonical = workspace.root.to_string_lossy().into_owned();
+fn load_at(path: &Path, canonical: &str) -> Result<MemoryFile> {
     if !path.exists() {
-        return Ok(MemoryFile { workspace: canonical, ..Default::default() });
+        return Ok(MemoryFile { workspace: canonical.into(), ..Default::default() });
     }
-    let metadata = fs::symlink_metadata(&path)?;
-    ensure!(metadata.is_file() && !metadata.file_type().is_symlink(), "Memory must be a regular file");
+    let metadata = fs::symlink_metadata(path)?;
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink(),
+        "Memory must be a regular file"
+    );
     ensure!(metadata.len() <= 128 * 1024, "Memory file is too large");
     let memory: MemoryFile = serde_json::from_slice(&fs::read(path)?)?;
     ensure!(memory.workspace == canonical, "Memory workspace identity mismatch");
     Ok(memory)
 }
 
-fn save(workspace: &Workspace, memory: &MemoryFile) -> Result<()> {
-    let path = memory_path(workspace);
+fn load(workspace: &Workspace) -> Result<MemoryFile> {
+    load_at(&memory_path(workspace), &workspace.root.to_string_lossy())
+}
+
+fn save_at(path: &Path, memory: &MemoryFile) -> Result<()> {
     let parent = path.parent().context("Missing memory folder")?;
     fs::create_dir_all(parent)?;
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
@@ -69,6 +73,10 @@ fn save(workspace: &Workspace, memory: &MemoryFile) -> Result<()> {
     temp.as_file().sync_all()?;
     temp.persist(path)?;
     Ok(())
+}
+
+fn save(workspace: &Workspace, memory: &MemoryFile) -> Result<()> {
+    save_at(&memory_path(workspace), memory)
 }
 
 pub fn record_event(workspace: &Workspace, kind: &str, target: &str) -> Result<()> {
@@ -139,6 +147,21 @@ mod tests {
     fn stable_workspace_key_and_scope() {
         assert_eq!(workspace_key("a"), workspace_key("a"));
         assert_ne!(workspace_key("a"), workspace_key("b"));
+    }
+    #[test]
+    fn memory_survives_reload_and_rejects_cross_workspace_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test-memory.json");
+        let mut record = load_at(&path, "project-one").unwrap();
+        record.notes.push(NoteRecord {
+            at: "2026-11-19T00:00:00Z".into(),
+            content: "Use Rust for the runtime".into(),
+        });
+        save_at(&path, &record).unwrap();
+        let loaded = load_at(&path, "project-one").unwrap();
+        assert_eq!(loaded.notes.len(), 1);
+        assert_eq!(loaded.notes[0].content, "Use Rust for the runtime");
+        assert!(load_at(&path, "another-project").is_err());
     }
     #[test]
     fn oversized_or_empty_notes_are_rejected() {
