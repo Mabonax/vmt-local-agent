@@ -606,6 +606,37 @@ mod tests {
     }
 
     #[test]
+    fn skills_and_memory_respect_read_only_and_review() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut tools = Tools {
+            workspace: Workspace::new(dir.path()).unwrap(),
+            observed: HashMap::new(),
+        };
+        assert!(matches!(
+            tools.prepare("list_skills", &json!({}), true, false).unwrap(),
+            Prepared::Output(text) if text.contains("rust-development")
+        ));
+        assert!(matches!(
+            tools.prepare("load_skill", &json!({"id":"code-review"}), true, false).unwrap(),
+            Prepared::Output(text) if text.contains("Skill: code-review")
+        ));
+        assert!(tools.prepare("load_skill", &json!({"id":"../secret"}), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("memory_search", &json!({"query":"missing"}), true, false).unwrap(),
+            Prepared::Output(text) if text.contains("No matching")
+        ));
+        assert!(tools.prepare("remember_project", &json!({"content":"Use Rust"}), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("remember_project", &json!({"content":"Use Rust"}), false, false).unwrap(),
+            Prepared::Review(Proposal::MemoryNote { .. })
+        ));
+        // Merely preparing a note must not save it.
+        assert!(crate::memory::search(&tools.workspace, "Use Rust")
+            .unwrap()
+            .contains("No matching"));
+    }
+
+    #[test]
     fn cancellation_before_execution_preserves_the_project() {
         let dir = tempfile::tempdir().unwrap();
         let mut tools = Tools {
