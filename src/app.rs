@@ -705,6 +705,7 @@ impl Desktop {
                     Proposal::File {path,..}=>{ui.label(format!("Project file: {path}"));},
                     Proposal::Command {..}=>{ui.label("This command runs with your Windows account in the selected project. It is not an OS sandbox.");},
                     Proposal::Web {..}=>{ui.label("This request connects to the internet. Review the destination and any query text before sending.");},
+                    Proposal::MemoryNote {..}=>{ui.label("This note will be saved in local project memory. Do not approve confidential or incorrect information.");},
                 }
                 ui.add_space(12.0);
                 egui::Frame::new().fill(BG).inner_margin(12).show(ui,|ui| {
