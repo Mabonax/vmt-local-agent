@@ -129,6 +129,7 @@ fn run_edit(
         .as_deref()
         .context("Choose a file in the project browser, then click Edit this file")?;
     let workspace = Workspace::new(root)?;
+    let mut journal = task_journal::TaskJournal::start(&workspace)?;
     let original = workspace.read(path)?;
     let instructions = format!(
         "{}\n{}",
@@ -194,11 +195,16 @@ fn run_edit(
             Err(_) => bail!("The review was closed"),
         }
     };
+    journal.record("approval", "edit_file", if approved { "approved" } else { "denied" })?;
     if !approved {
+        journal.finish("stopped")?;
         let _ = tx.send(Event::Final("Edit denied. The file was preserved.".into()));
         return Ok(());
     }
-    let output = tools.execute(&proposal, cancel)?;
+    let output = execution::execute_reviewed(
+        &mut tools, "edit_file", &proposal, settings.read_only, false,
+        &mut journal, cancel,
+    )?;
     let expected = match &proposal {
         crate::types::Proposal::File { after, .. } => after,
         _ => bail!("Unexpected edit proposal"),
@@ -215,6 +221,7 @@ fn run_edit(
         detail: output,
         state: "Complete".into(),
     }));
+    journal.finish("completed")?;
     let _=tx.send(Event::Final(format!("Updated `{path}` with the exact edit you approved. Read the file back and verified it matches the approved content. No commands or test suite were run.")));
     Ok(())
 }
