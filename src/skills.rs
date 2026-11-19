@@ -42,6 +42,7 @@ pub fn catalog() -> String {
         for path in paths.into_iter().take(MAX_SKILLS) {
             if let Some(id) = path.file_stem().and_then(|s| s.to_str())
                 && valid_id(id)
+                && !BUILTINS.iter().any(|(built_in, _, _)| *built_in == id)
                 && path.extension().is_some_and(|e| e == "md")
                 && let Ok(meta) = fs::symlink_metadata(&path)
                 && meta.is_file() && !meta.file_type().is_symlink()
