@@ -246,7 +246,8 @@ impl Workspace {
             }
             None => {
                 ensure!(
-                    fs::symlink_metadata(&path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
+                    fs::symlink_metadata(&path)
+                        .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
                     "The target appeared during preparation; it was preserved"
                 );
                 temp.persist_noclobber(&path)
