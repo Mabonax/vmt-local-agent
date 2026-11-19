@@ -706,6 +706,9 @@ impl Desktop {
                     Proposal::Command {..}=>{ui.label("This command runs with your Windows account in the selected project. It is not an OS sandbox.");},
                     Proposal::Web {..}=>{ui.label("This request connects to the internet. Review the destination and any query text before sending.");},
                     Proposal::MemoryNote {..}=>{ui.label("This note will be saved in local project memory. Do not approve confidential or incorrect information.");},
+                    Proposal::Mcp {..}=>{ui.label("This starts an external MCP server executable with your Windows account. It is not sandboxed. Review server, operation, tool and arguments.");},
+                    Proposal::KnowledgeIndex {..}=>{ui.label("This sends selected allowed project text to LOCAL Ollama embeddings and saves plaintext snippets and vectors under LocalAppData.");},
+                    Proposal::Workflow {..}=>{ui.label("This changes persistent local workflow state only, not project source files.");},
                 }
                 ui.add_space(12.0);
                 egui::Frame::new().fill(BG).inner_margin(12).show(ui,|ui| {
