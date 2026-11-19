@@ -282,7 +282,8 @@ pub fn diff(proposal: &Proposal) -> String {
             "Save project memory note (stored locally):\n{content}"
         ),
         Proposal::Mcp { server, operation, tool, arguments } => format!(
-            "Run local MCP server process as your Windows user (NOT sandboxed).\nServer: {server}\nOperation: {operation}\nTool: {tool}\nArguments:\n{}",
+            "Run local MCP server process as your Windows user (NOT sandboxed).\nServer: {server}\n{}\nOperation: {operation}\nTool: {tool}\nTool arguments:\n{}",
+            mcp::describe_server(server).unwrap_or_else(|error| format!("Configuration unavailable: {error:#}")),
             serde_json::to_string_pretty(arguments).unwrap_or_default()
         ),
         Proposal::KnowledgeIndex { model } => format!(
