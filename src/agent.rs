@@ -37,6 +37,7 @@ Tools (use exact names and keys):
 - remember_project: {content:"Concise project decision"} proposes a persistent note and requires explicit user approval. Do not store secrets or personal data. If denied, do not retry.
 - mcp_servers: {} lists installed MCP server registrations without starting processes.
 - mcp_tools: {server:"wordcraft"} requests approval before launching a registered external MCP server to inspect tools. Do not guess tool names.
+- mcp_schema: {server:"wordcraft",tool:"discovered_tool"} retrieves its full cached argument schema without launching another process. Use before complex MCP calls.
 - mcp_call: {server:"wordcraft",tool:"actual_tool_name",arguments:{}} requests separate user approval before invoking exactly that MCP tool; use names from mcp_tools.
 - index_knowledge: {model:"nomic-embed-text"} requests approval to build a local project semantic index. Only use an already installed embedding model.
 - knowledge_search: {query:"text"} searches the index; results can be stale.
