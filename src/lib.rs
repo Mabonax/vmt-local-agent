@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod execution;
 pub mod policy;
 pub mod research;
 pub mod task_journal;
