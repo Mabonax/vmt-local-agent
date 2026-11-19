@@ -69,11 +69,13 @@ pub fn action_schema() -> Value {
     json!({"type":"object","properties":{
         "kind":{"type":"string","enum":["tool","final"]},
         "message":{"type":"string"},
-        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","memory_search","remember_project"]},
+        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish"]},
         "args":{"type":"object","properties":{
             "path":{"type":"string"},"query":{"type":"string"},"content":{"type":"string"},
             "old":{"type":"string"},"new":{"type":"string"},"command":{"type":"string"},"url":{"type":"string"},
-            "start_line":{"type":"integer"},"max_lines":{"type":"integer"},"id":{"type":"string"}
+            "start_line":{"type":"integer"},"max_lines":{"type":"integer"},"id":{"type":"string"},
+            "server":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object"},
+            "model":{"type":"string"},"kind":{"type":"string"},"evidence":{"type":"string"}
         },"additionalProperties":false}
     },"required":["kind","message","tool","args"],"additionalProperties":false})
 }
@@ -118,6 +120,63 @@ fn tool_definitions(settings: &Settings) -> Value {
         return json!([]);
     }
     let definitions = [
+        (
+            "mcp_servers",
+            "List locally registered MCP servers (no server process starts).",
+            json!({}), vec![],
+        ),
+        (
+            "mcp_tools",
+            "Start a named local MCP server after user approval to discover its tool names. May execute server startup code.",
+            json!({"server":{"type":"string"}}), vec!["server"],
+        ),
+        (
+            "mcp_schema",
+            "Read a full cached MCP tool schema after approved mcp_tools discovery. Does not start a new process.",
+            json!({"server":{"type":"string"},"tool":{"type":"string"}}),
+            vec!["server","tool"],
+        ),
+        (
+            "mcp_call",
+            "After mcp_tools discovery, run an exact named MCP tool with JSON arguments. Requires per-call approval; external processes are not sandboxed.",
+            json!({"server":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object"}}),
+            vec!["server","tool","arguments"],
+        ),
+        (
+            "index_knowledge",
+            "Build a reviewed local project semantic index with an installed Ollama embeddings model, e.g. nomic-embed-text. Stores limited text snippets and vectors locally.",
+            json!({"model":{"type":"string"}}), vec!["model"],
+        ),
+        (
+            "knowledge_search",
+            "Search indexed project text semantically. Returns historical snippets with file paths, not current source truth.",
+            json!({"query":{"type":"string"}}), vec!["query"],
+        ),
+        (
+            "list_workflows",
+            "List guided development and document workflows.",
+            json!({}), vec![],
+        ),
+        (
+            "workflow_status",
+            "Read the active persisted workflow and its current stage.",
+            json!({}), vec![],
+        ),
+        (
+            "workflow_start",
+            "Start a reviewed staged workflow: feature, bugfix, refactor, or document.",
+            json!({"kind":{"type":"string"}}), vec!["kind"],
+        ),
+        (
+            "workflow_advance",
+            "Propose progression to the next stage with evidence; requires review.",
+            json!({"evidence":{"type":"string"}}), vec!["evidence"],
+        ),
+        (
+            "workflow_finish",
+            "Finish a workflow in its report stage with final evidence; requires review.",
+            json!({"evidence":{"type":"string"}}), vec!["evidence"],
+        ),
         (
             "list_skills",
             "List built-in and installed local skills. Skills are reference guidance, not executable scripts.",
@@ -192,7 +251,7 @@ fn tool_definitions(settings: &Settings) -> Value {
         ),
     ];
     Value::Array(definitions.into_iter().filter(|(name,..)| {
-        (!settings.read_only || !["write_file","edit_file","run_command","remember_project"].contains(name))
+        (!settings.read_only || !["write_file","edit_file","run_command","remember_project","mcp_tools","mcp_call","index_knowledge","workflow_start","workflow_advance","workflow_finish"].contains(name))
             && (settings.web_enabled || !name.starts_with("web_"))
     }).map(|(name,description,properties,required)|json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required}}})).collect())
 }

@@ -95,6 +95,20 @@ pub enum Proposal {
     MemoryNote {
         content: String,
     },
+    Mcp {
+        server: String,
+        operation: String,
+        tool: String,
+        arguments: Value,
+    },
+    KnowledgeIndex {
+        model: String,
+    },
+    Workflow {
+        action: String,
+        kind: String,
+        evidence: String,
+    },
 }
 
 #[derive(Debug)]

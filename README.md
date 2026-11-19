@@ -79,6 +79,28 @@ See [Skills and Project Memory](SKILLS_AND_MEMORY.md) for limits, install
 instructions and the workstation acceptance checklist. This feature branch
 still requires the Windows build, tests and live model/UI verification.
 
+## Extended capabilities (0.3.0 preview)
+
+The next optional layer provides:
+
+- **Document-generation skills:** WordCraft, PdfCraft, GridCraft and DeckCraft
+  workflows, using real tools discovered through registered local MCP servers.
+  Binary output is available only when compatible native tools are installed.
+- **Structured workflows:** persistent per-project `feature`, `bugfix`,
+  `refactor` and `document` stages, each transition requiring user review.
+- **Local semantic retrieval:** user-approved indexing with an installed Ollama
+  embeddings model; limited vector search over plaintext project snippets.
+- **MCP stdio:** reviewed discovery and tool calls for registered local servers,
+  including all 15 optional ArtCraft Craft CLIs. External executables are not
+  OS-sandboxed. This preview supports the MCP 2025-11-25 legacy lifecycle,
+  not the newer 2026-07-28 stateless protocol.
+
+Read [MCP and ArtCraft](MCP_AND_CRAFT.md) and
+[Knowledge and Workflows](KNOWLEDGE_AND_WORKFLOWS.md) before enabling these
+capabilities. The new feature code requires workstation compilation and
+acceptance testing; the documentation does not claim verified exports or
+live integration of the fifteen native applications.
+
 ## Internet
 
 Internet tools are off initially. Enable **reviewed internet tools** in Settings
