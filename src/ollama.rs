@@ -69,7 +69,7 @@ pub fn action_schema() -> Value {
     json!({"type":"object","properties":{
         "kind":{"type":"string","enum":["tool","final"]},
         "message":{"type":"string"},
-        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish"]},
+        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},
         "args":{"type":"object","properties":{
             "path":{"type":"string"},"query":{"type":"string"},"content":{"type":"string"},
             "old":{"type":"string"},"new":{"type":"string"},"command":{"type":"string"},"url":{"type":"string"},
@@ -120,6 +120,16 @@ fn tool_definitions(settings: &Settings) -> Value {
         return json!([]);
     }
     let definitions = [
+        (
+            "research_sources",
+            "Show previously fetched public HTTPS source URLs and retrieval dates for this project. Does not contact the internet.",
+            json!({}), vec![],
+        ),
+        (
+            "task_history",
+            "Show previous local task outcomes and interrupted/uncertain statuses. Never automatically replay actions.",
+            json!({}), vec![],
+        ),
         (
             "mcp_servers",
             "List locally registered MCP servers (no server process starts).",
