@@ -92,6 +92,9 @@ pub enum Proposal {
         tool: String,
         args: Value,
     },
+    MemoryNote {
+        content: String,
+    },
 }
 
 #[derive(Debug)]

@@ -1,4 +1,5 @@
 use crate::{
+    memory, skills,
     types::Proposal,
     workspace::{Workspace, clip},
 };
@@ -41,6 +42,23 @@ impl Tools {
     ) -> Result<Prepared> {
         let path = args["path"].as_str().unwrap_or(".");
         match name {
+            "list_skills" => Ok(Prepared::Output(skills::catalog())),
+            "load_skill" => Ok(Prepared::Output(skills::load(string(args, "id")?)?)),
+            "memory_search" => Ok(Prepared::Output(memory::search(
+                &self.workspace,
+                args["query"].as_str().unwrap_or(""),
+            )?)),
+            "remember_project" => {
+                ensure!(!read_only, "Read-only mode: memory changes are disabled");
+                let content = string(args, "content")?;
+                ensure!(
+                    !content.trim().is_empty() && content.len() <= 500,
+                    "Memory note must contain 1–500 bytes"
+                );
+                Ok(Prepared::Review(Proposal::MemoryNote {
+                    content: content.to_string(),
+                }))
+            }
             "list_files" => Ok(Prepared::Output(
                 self.workspace.files(path, 250)?.join("\n"),
             )),
@@ -191,6 +209,10 @@ impl Tools {
             Proposal::Command { command } => run_command(&self.workspace, command, cancel),
             Proposal::Web { tool, args } if tool == "web_fetch" => web_fetch(string(args, "url")?),
             Proposal::Web { args, .. } => web_search(string(args, "query")?),
+            Proposal::MemoryNote { content } => {
+                memory::add_reviewed_note(&self.workspace, content)?;
+                Ok("Approved project memory note saved locally.".into())
+            }
         }
     }
 }
@@ -207,6 +229,9 @@ pub fn diff(proposal: &Proposal) -> String {
             .header(&format!("a/{path}"), &format!("b/{path}"))
             .to_string(),
         Proposal::Command { command } => command.clone(),
+        Proposal::MemoryNote { content } => format!(
+            "Save project memory note (stored locally):\n{content}"
+        ),
         Proposal::Web { tool, args } => format!(
             "{tool}\n{}",
             serde_json::to_string_pretty(args).unwrap_or_default()
@@ -578,6 +603,37 @@ mod tests {
             run_command(&workspace, script, &Arc::new(AtomicBool::new(false))).unwrap();
         assert!(output.contains("success fixture"), "{output}");
         assert!(output.contains("Exit status:"), "{output}");
+    }
+
+    #[test]
+    fn skills_and_memory_respect_read_only_and_review() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut tools = Tools {
+            workspace: Workspace::new(dir.path()).unwrap(),
+            observed: HashMap::new(),
+        };
+        assert!(matches!(
+            tools.prepare("list_skills", &json!({}), true, false).unwrap(),
+            Prepared::Output(text) if text.contains("rust-development")
+        ));
+        assert!(matches!(
+            tools.prepare("load_skill", &json!({"id":"code-review"}), true, false).unwrap(),
+            Prepared::Output(text) if text.contains("Skill: code-review")
+        ));
+        assert!(tools.prepare("load_skill", &json!({"id":"../secret"}), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("memory_search", &json!({"query":"missing"}), true, false).unwrap(),
+            Prepared::Output(text) if text.contains("No matching")
+        ));
+        assert!(tools.prepare("remember_project", &json!({"content":"Use Rust"}), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("remember_project", &json!({"content":"Use Rust"}), false, false).unwrap(),
+            Prepared::Review(Proposal::MemoryNote { .. })
+        ));
+        // Merely preparing a note must not save it.
+        assert!(crate::memory::search(&tools.workspace, "Use Rust")
+            .unwrap()
+            .contains("No matching"));
     }
 
     #[test]

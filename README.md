@@ -60,6 +60,25 @@ Increase these in Settings only as needed; larger context consumes more GPU/RAM.
 Long files, conversations and instructions are bounded. A context error or an
 incomplete model response stops the turn before executing any partial action.
 
+## Skills and persistent project memory (0.2.0 preview)
+
+Agent mode can now call `list_skills` and `load_skill` for bounded local
+Markdown workflow guidance. Built-in skills cover Rust development, code review
+and project discovery. Additional user-managed `*.md` skills can be installed in
+`%LOCALAPPDATA%/VMT/LocalAgent/skills/`. A skill never executes code by itself.
+
+The agent can query historical per-project records with `memory_search`.
+Successful reviewed file changes, command completions and web requests record
+minimal metadata, not command text or full output. The `remember_project`
+tool proposes an explicit short project note requiring **Approve once**.
+Memory persists across app restarts in
+`%LOCALAPPDATA%/VMT/LocalAgent/memory/`; it is plain JSON and is not encrypted.
+Historical notes are reference data, not source-of-truth.
+
+See [Skills and Project Memory](SKILLS_AND_MEMORY.md) for limits, install
+instructions and the workstation acceptance checklist. This feature branch
+still requires the Windows build, tests and live model/UI verification.
+
 ## Internet
 
 Internet tools are off initially. Enable **reviewed internet tools** in Settings
