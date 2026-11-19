@@ -1,5 +1,5 @@
 use crate::{
-    knowledge, mcp, memory, policy, skills, workflows,
+    knowledge, mcp, memory, policy, research, skills, task_journal, workflows,
     types::Proposal,
     workspace::{Workspace, clip},
 };
@@ -45,6 +45,8 @@ impl Tools {
         policy::authorize(name, read_only, web)?;
         let path = args["path"].as_str().unwrap_or(".");
         match name {
+            "research_sources" => Ok(Prepared::Output(research::list_sources(&self.workspace)?)),
+            "task_history" => Ok(Prepared::Output(task_journal::recent_for(&self.workspace, 12)?)),
             "list_workflows" => Ok(Prepared::Output(workflows::catalog())),
             "workflow_status" => Ok(Prepared::Output(workflows::status(&self.workspace)?)),
             "workflow_start" | "workflow_advance" | "workflow_finish" => {
