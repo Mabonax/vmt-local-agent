@@ -59,6 +59,9 @@ impl Tools {
                 }))
             }
             "mcp_servers" => Ok(Prepared::Output(mcp::configured_servers()?)),
+            "mcp_schema" => Ok(Prepared::Output(mcp::tool_schema(
+                string(args, "server")?, string(args, "tool")?,
+            )?)),
             "mcp_tools" | "mcp_call" => {
                 ensure!(!read_only, "Read-only mode: external MCP execution disabled");
                 let server = string(args, "server")?.to_string();
