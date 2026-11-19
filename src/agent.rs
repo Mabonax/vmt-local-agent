@@ -1,5 +1,5 @@
 use crate::{
-    memory, policy, research, skills, task_journal,
+    execution, memory, policy, research, skills, task_journal,
     ollama,
     tools::{Prepared, Tools, diff},
     types::{Activity, Approval, ChatEntry, Event, Settings},
@@ -381,8 +381,8 @@ fn run_inner(
         let policy_decision = policy::authorize(
             &action.tool, settings.read_only, settings.web_enabled
         );
-        let _ = journal.record("policy", &action.tool,
-            if policy_decision.is_ok() { "allowed" } else { "denied" });
+        journal.record("policy", &action.tool,
+            if policy_decision.is_ok() { "allowed" } else { "denied" })?;
         let result = match tools.prepare(
             &action.tool,
             &action.args,
@@ -410,8 +410,8 @@ fn run_inner(
                         Err(_) => bail!("The approval window was closed"),
                     }
                 };
-                let _ = journal.record("approval", &action.tool,
-                    if approved { "approved" } else { "denied" });
+                journal.record("approval", &action.tool,
+                    if approved { "approved" } else { "denied" })?;
                 if approved {
                     // Reevaluate policy immediately before dispatch. User review
                     // does not override the selected runtime's capability flags.
@@ -420,7 +420,10 @@ fn run_inner(
                     did_command = matches!(proposal, crate::types::Proposal::Command { .. });
                     did_web = matches!(proposal, crate::types::Proposal::Web { .. });
                     did_mcp = matches!(proposal, crate::types::Proposal::Mcp { .. });
-                    tools.execute(&proposal, cancel)
+                    execution::execute_reviewed(
+                        &mut tools, &action.tool, &proposal, settings.read_only,
+                        settings.web_enabled, &mut journal, cancel,
+                    )
                 } else {
                     denied = true;
                     Ok("The user denied this action. Nothing was executed. Do not retry the same action; explain or choose a safe alternative.".into())
@@ -431,15 +434,22 @@ fn run_inner(
         if cancel.load(Ordering::Relaxed) {
             bail!("Stopped");
         }
-        let _ = journal.record("execution", &action.tool,
+        journal.record("execution", &action.tool,
             match &result {
                 Ok(_) if denied => "denied",
                 Ok(_) => "completed",
                 Err(_) => "failed",
-            });
+            })?;
         let (output, state) = match result {
             Ok(text) if denied => (text, "Denied"),
             Ok(text) => {
+                if did_web && action.tool == "web_fetch" {
+                    if let Some(url) = action.args["url"].as_str() {
+                        if let Err(error) = research::record_fetch(&tools.workspace, url) {
+                            let _ = tx.send(Event::Note(format!("Research provenance not saved: {error:#}")));
+                        }
+                    }
+                }
                 if did_file || did_command || did_web || did_mcp {
                     let kind = if did_file { "file_change" } else if did_command || did_mcp { "command" } else { "web_request" };
                     let target = if did_file { action.args["path"].as_str().unwrap_or("") } else { "" };
