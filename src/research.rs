@@ -23,23 +23,41 @@ fn path(ws: &Workspace) -> PathBuf {
         hash ^= u64::from(*b);
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    store::data_dir().join("research").join(format!("{hash:016x}.json"))
+    store::data_dir()
+        .join("research")
+        .join(format!("{hash:016x}.json"))
 }
 fn load(ws: &Workspace) -> Result<Ledger> {
     let file = path(ws);
+    store::check_local_path(&file)?;
     if !file.exists() {
-        return Ok(Ledger { workspace: ws.root.to_string_lossy().into_owned(), sources: vec![] });
+        return Ok(Ledger {
+            workspace: ws.root.to_string_lossy().into_owned(),
+            sources: vec![],
+        });
     }
     let meta = fs::symlink_metadata(&file)?;
-    ensure!(meta.is_file() && !meta.file_type().is_symlink() && meta.len() <= 64 * 1024,
-        "Research ledger is invalid");
+    ensure!(
+        meta.is_file() && !meta.file_type().is_symlink() && meta.len() <= 64 * 1024,
+        "Research ledger is invalid"
+    );
     let ledger: Ledger = serde_json::from_slice(&fs::read(file)?)?;
-    ensure!(ledger.workspace == ws.root.to_string_lossy(), "Research ledger scope mismatch");
+    ensure!(
+        ledger.workspace == ws.root.to_string_lossy(),
+        "Research ledger scope mismatch"
+    );
     Ok(ledger)
 }
 pub fn record_fetch(ws: &Workspace, url: &str) -> Result<()> {
     let mut parsed = reqwest::Url::parse(url)?;
-    ensure!(parsed.scheme() == "https", "Only HTTPS source URLs can be recorded");
+    ensure!(
+        parsed.scheme() == "https",
+        "Only HTTPS source URLs can be recorded"
+    );
+    ensure!(
+        parsed.username().is_empty() && parsed.password().is_none(),
+        "Source URL credentials are forbidden"
+    );
     // The approved URL may have credential-like query parameters. Do not persist them.
     parsed.set_query(None);
     parsed.set_fragment(None);
@@ -53,12 +71,13 @@ pub fn record_fetch(ws: &Workspace, url: &str) -> Result<()> {
         ledger.sources.drain(..ledger.sources.len() - 100);
     }
     let file = path(ws);
+    store::check_local_path(&file)?;
     let parent = file.parent().context("Missing research folder")?;
     fs::create_dir_all(parent)?;
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
     temp.write_all(&serde_json::to_vec_pretty(&ledger)?)?;
     temp.as_file().sync_all()?;
-    temp.persist(file)?;
+    store::persist_local(temp, &file)?;
     Ok(())
 }
 pub fn list_sources(ws: &Workspace) -> Result<String> {
@@ -66,11 +85,17 @@ pub fn list_sources(ws: &Workspace) -> Result<String> {
     if ledger.sources.is_empty() {
         return Ok("No approved HTTPS sources recorded for this project.".into());
     }
-    let sources = ledger.sources.iter().rev().take(20)
+    let sources = ledger
+        .sources
+        .iter()
+        .rev()
+        .take(20)
         .map(|s| format!("{} {} [{}]", s.at, s.url, s.kind))
         .collect::<Vec<_>>();
-    Ok(format!("RECORDED SOURCE METADATA (not a verification of accuracy):\n{}",
-        sources.join("\n")))
+    Ok(format!(
+        "RECORDED SOURCE METADATA (not a verification of accuracy):\n{}",
+        sources.join("\n")
+    ))
 }
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,6 @@
 # Security and execution boundaries
 
-VMT Local Agent 0.1.x uses per-action human review. It is **not** a security
+VMT Local Agent 0.4.0 uses per-action human review. It is **not** a security
 sandbox and must not be used to run untrusted commands on a machine containing
 sensitive credentials or valuable data.
 

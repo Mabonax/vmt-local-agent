@@ -35,8 +35,8 @@ pub fn classify(tool: &str) -> Result<Capability> {
         "run_command" => Capability::Shell,
         "web_search" | "web_fetch" => Capability::Internet,
         "mcp_tools" | "mcp_call" => Capability::ExternalProcess,
-        "index_knowledge" | "remember_project" | "workflow_start"
-        | "workflow_advance" | "workflow_finish" => Capability::LocalDataWrite,
+        "index_knowledge" | "remember_project" | "workflow_start" | "workflow_advance"
+        | "workflow_finish" => Capability::LocalDataWrite,
         _ => bail!("Unregistered tool is forbidden by policy: {tool}"),
     })
 }
@@ -44,7 +44,8 @@ pub fn authorize(tool: &str, read_only: bool, internet_enabled: bool) -> Result<
     let capability = classify(tool)?;
     ensure!(
         !read_only || matches!(capability, Capability::Read),
-        "Read-only mode disallows {} operations", capability.label()
+        "Read-only mode disallows {} operations",
+        capability.label()
     );
     ensure!(
         internet_enabled || capability != Capability::Internet,
@@ -55,14 +56,29 @@ pub fn authorize(tool: &str, read_only: bool, internet_enabled: bool) -> Result<
 /// This is only a coarse preventative privacy gate, not a data-loss prevention
 /// system. The approval dialog MUST still display the entire exact query.
 pub fn validate_public_search(query: &str) -> Result<()> {
-    ensure!(!query.trim().is_empty() && query.len() <= 500,
-        "Public research query must contain 1–500 bytes");
-    ensure!(!query.contains('\n') && !query.contains('\r'),
-        "Public research queries must be a single line");
+    ensure!(
+        !query.trim().is_empty() && query.len() <= 500,
+        "Public research query must contain 1–500 bytes"
+    );
+    ensure!(
+        !query.contains('\n') && !query.contains('\r'),
+        "Public research queries must be a single line"
+    );
     let q = query.to_ascii_lowercase();
-    for marker in ["-----begin private key", "sk-proj-", "ghp_", "github_pat_",
-        "password=", "authorization: bearer", "aws_secret_access_key", "ollama_api_key="] {
-        ensure!(!q.contains(marker), "Public query appears to contain a credential; request denied");
+    for marker in [
+        "-----begin private key",
+        "sk-proj-",
+        "ghp_",
+        "github_pat_",
+        "password=",
+        "authorization: bearer",
+        "aws_secret_access_key",
+        "ollama_api_key=",
+    ] {
+        ensure!(
+            !q.contains(marker),
+            "Public query appears to contain a credential; request denied"
+        );
     }
     Ok(())
 }
@@ -75,7 +91,10 @@ mod tests {
         assert!(authorize("write_file", true, true).is_err());
         assert!(authorize("mcp_call", true, true).is_err());
         assert!(authorize("web_search", false, false).is_err());
-        assert_eq!(authorize("read_file", true, false).unwrap(), Capability::Read);
+        assert_eq!(
+            authorize("read_file", true, false).unwrap(),
+            Capability::Read
+        );
         assert!(classify("run_command").unwrap().requires_approval());
     }
     #[test]

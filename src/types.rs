@@ -97,12 +97,14 @@ pub enum Proposal {
     },
     Mcp {
         server: String,
+        launch: crate::mcp::Server,
         operation: String,
         tool: String,
         arguments: Value,
     },
     KnowledgeIndex {
         model: String,
+        endpoint: String,
     },
     Workflow {
         action: String,

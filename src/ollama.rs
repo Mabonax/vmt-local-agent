@@ -123,69 +123,80 @@ fn tool_definitions(settings: &Settings) -> Value {
         (
             "research_sources",
             "Show previously fetched public HTTPS source URLs and retrieval dates for this project. Does not contact the internet.",
-            json!({}), vec![],
+            json!({}),
+            vec![],
         ),
         (
             "task_history",
             "Show previous local task outcomes and interrupted/uncertain statuses. Never automatically replay actions.",
-            json!({}), vec![],
+            json!({}),
+            vec![],
         ),
         (
             "mcp_servers",
             "List locally registered MCP servers (no server process starts).",
-            json!({}), vec![],
+            json!({}),
+            vec![],
         ),
         (
             "mcp_tools",
             "Start a named local MCP server after user approval to discover its tool names. May execute server startup code.",
-            json!({"server":{"type":"string"}}), vec!["server"],
+            json!({"server":{"type":"string"}}),
+            vec!["server"],
         ),
         (
             "mcp_schema",
             "Read a full cached MCP tool schema after approved mcp_tools discovery. Does not start a new process.",
             json!({"server":{"type":"string"},"tool":{"type":"string"}}),
-            vec!["server","tool"],
+            vec!["server", "tool"],
         ),
         (
             "mcp_call",
             "After mcp_tools discovery, run an exact named MCP tool with JSON arguments. Requires per-call approval; external processes are not sandboxed.",
             json!({"server":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object"}}),
-            vec!["server","tool","arguments"],
+            vec!["server", "tool", "arguments"],
         ),
         (
             "index_knowledge",
             "Build a reviewed local project semantic index with an installed Ollama embeddings model, e.g. nomic-embed-text. Stores limited text snippets and vectors locally.",
-            json!({"model":{"type":"string"}}), vec!["model"],
+            json!({"model":{"type":"string"}}),
+            vec!["model"],
         ),
         (
             "knowledge_search",
             "Search indexed project text semantically. Returns historical snippets with file paths, not current source truth.",
-            json!({"query":{"type":"string"}}), vec!["query"],
+            json!({"query":{"type":"string"}}),
+            vec!["query"],
         ),
         (
             "list_workflows",
             "List guided development and document workflows.",
-            json!({}), vec![],
+            json!({}),
+            vec![],
         ),
         (
             "workflow_status",
             "Read the active persisted workflow and its current stage.",
-            json!({}), vec![],
+            json!({}),
+            vec![],
         ),
         (
             "workflow_start",
             "Start a reviewed staged workflow: feature, bugfix, refactor, or document.",
-            json!({"kind":{"type":"string"}}), vec!["kind"],
+            json!({"kind":{"type":"string"}}),
+            vec!["kind"],
         ),
         (
             "workflow_advance",
             "Propose progression to the next stage with evidence; requires review.",
-            json!({"evidence":{"type":"string"}}), vec!["evidence"],
+            json!({"evidence":{"type":"string"}}),
+            vec!["evidence"],
         ),
         (
             "workflow_finish",
             "Finish a workflow in its report stage with final evidence; requires review.",
-            json!({"evidence":{"type":"string"}}), vec!["evidence"],
+            json!({"evidence":{"type":"string"}}),
+            vec!["evidence"],
         ),
         (
             "list_skills",
@@ -323,8 +334,8 @@ pub fn next_turn(
             break;
         }
         ensure!(count <= 1024 * 1024, "Ollama stream record exceeded 1 MiB");
-        let packet: Value = serde_json::from_slice(&packet_bytes)
-            .context("Invalid Ollama stream")?;
+        let packet: Value =
+            serde_json::from_slice(&packet_bytes).context("Invalid Ollama stream")?;
         if packet.get("error").is_some() {
             bail!("Ollama reported an inference error. Check its logs and the context size.");
         }
@@ -339,6 +350,10 @@ pub fn next_turn(
             "Model response exceeded the size limit"
         );
         if let Some(chunk_calls) = packet["message"]["tool_calls"].as_array() {
+            ensure!(
+                calls.len() + chunk_calls.len() <= 20,
+                "Too many streamed tool calls"
+            );
             calls.extend(chunk_calls.iter().cloned());
         }
         parts += 1;
