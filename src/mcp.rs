@@ -83,7 +83,7 @@ fn notify(child: &mut Child) -> Result<()> {
     Ok(())
 }
 
-fn response(rx: &mpsc::Receiver<Result<Value, String>>, id: u64, timeout: Duration) -> Result<Value> {
+fn response(rx: &mpsc::Receiver<std::result::Result<Value, String>>, id: u64, timeout: Duration) -> Result<Value> {
     for _ in 0..128 {
         let message = rx.recv_timeout(timeout).context("MCP response timeout or disconnected server")?
             .map_err(anyhow::Error::msg)?;
