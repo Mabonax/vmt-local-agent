@@ -68,6 +68,7 @@ pub fn run(
         };
         let _ = tx.send(Event::Error(message));
     }
+    crate::mcp::disconnect_all();
     let _ = tx.send(Event::Finished);
     repaint.request_repaint();
 }
