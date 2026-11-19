@@ -1,7 +1,9 @@
 # Local MCP + ArtCraft integration (0.3.0 preview)
 
 VMT Local Agent supports explicitly reviewed **local stdio MCP** tool discovery and
-calls. This implementation targets the negotiated MCP **2025-11-25** lifecycle.
+calls. This implementation supports the negotiated MCP **2025-11-25** and
+**2025-06-18** stdio lifecycles. EffectCraft 0.21.0 and FigCraft 0.14.0 return
+2025-06-18 during negotiation.
 It does **not** yet support the newer 2026-07-28 stateless MCP protocol,
 Streamable HTTP, OAuth, MCP resources/prompts, or MCP Apps UI.
 
@@ -21,8 +23,14 @@ Streamable HTTP, OAuth, MCP resources/prompts, or MCP Apps UI.
   can keep project/document state between calls. Sessions are terminated when
   the agent task ends, fails or is cancelled. There is no background service.
 - Review server binaries, startup flags, tool arguments and output before use.
+  The proposal captures the executable and complete flags; a configuration
+  change after review is rejected before dispatch. This does not pin executable
+  bytes or protect against a concurrent replacement by another local process.
   MCP responses and tool descriptions are untrusted reference data.
 - MCP responses are limited and will not display arbitrary large binary media.
+  Records are capped at 128 KiB, receive queues at 16 records, discovery at
+  500 tools/11 pages/60 seconds, and precise schemas at 12 KB. Oversized
+  schemas fail explicitly rather than returning an incomplete JSON schema.
   Some native apps require more complex session/streaming support than this
   initial transport provides; validate each app before calling it supported.
 - A command may have effects before a timeout or cancellation. There are no

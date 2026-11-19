@@ -1,4 +1,4 @@
-# VMT Local Agent
+# VMT Local Agent 0.4.0
 
 A native Rust desktop coding workbench for the Ollama models installed on this
 computer. It provides chat, project inspection, reviewed edits, approved commands,
@@ -7,7 +7,7 @@ model quality or full feature parity.
 
 ## Open the app
 
-Start Ollama, then open `dist/VMT Local Agent.exe` or the **VMT Local Agent** desktop
+Start Ollama, then open `dist/VMT Local Agent 0.4.0.exe` or the **VMT Local Agent** desktop
 shortcut. No OpenAI account or API key is needed for local inference.
 
 1. Choose a model at the top. Start with **qwen3.5:4b** for Agent mode.
@@ -91,8 +91,8 @@ The next optional layer provides:
 - **Local semantic retrieval:** user-approved indexing with an installed Ollama
   embeddings model; limited vector search over plaintext project snippets.
 - **MCP stdio:** reviewed discovery and tool calls for registered local servers,
-  including all 15 optional ArtCraft Craft CLIs. External executables are not
-  OS-sandboxed. This preview supports the MCP 2025-11-25 legacy lifecycle,
+  including registrations for 15 optional ArtCraft Craft CLIs. External executables are not
+  OS-sandboxed. This preview supports the MCP 2025-11-25 and 2025-06-18 stdio lifecycles,
   not the newer 2026-07-28 stateless protocol.
 
 Read [MCP and ArtCraft](MCP_AND_CRAFT.md) and
@@ -168,8 +168,22 @@ repository or deployment is replaced by this application.
 
 ## Current scope
 
-This release has no OS-level isolation, terminal emulator, language server, MCP
-client, plugin marketplace, git worktree manager, multi-agent execution, file
+This release has no OS-level isolation, terminal emulator, language server,
+plugin marketplace, git worktree manager, multi-agent execution, file
 deletion tool, background service or app updater. Markdown support is intentionally
 basic; fenced code blocks can be copied. Rust source and build scripts are included
 so the workbench can be extended after real project usage.
+
+## 0.4.0 workstation verification
+
+See [VERIFICATION_0.4.md](VERIFICATION_0.4.md) for the current build, model,
+desktop, MCP, retrieval and research results and remaining release limits.
+Earlier verification files describe earlier releases.
+
+After building, explicit acceptance checks can be reproduced with
+`scripts/verify-0.4.ps1 -Action runtime`, then `-Action resume`, `-Action rag`,
+`-Action research`, `-Action craft`, or `-Action scenario -Model qwen3.5:4b`.
+These checks use synthetic files under `.local/verification-04` and an isolated
+app-data directory. Only the scenario runs reviewed Cargo commands. Craft
+checks launch installed headless servers with roots pointing at test folders;
+they do not register servers in the user's normal application data.

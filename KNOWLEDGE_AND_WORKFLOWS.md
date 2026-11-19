@@ -13,6 +13,13 @@ Install a local embedding model using Ollama, for example:
 ollama pull nomic-embed-text
 ```
 
+This workstation already has `embeddinggemma:latest`; use it without another
+download. Before sending document or query text, the runtime verifies installed
+local weights, the embedding capability, and absence of cloud routing metadata.
+Indexing captures its loopback endpoint in the proposal and checks cancellation
+between bounded batches and before persistence. An in-flight embedding request
+can take up to 30 seconds to return after Stop.
+
 In Agent mode, request:
 
 1. "Index this project's allowed text files with nomic-embed-text."

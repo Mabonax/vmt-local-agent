@@ -1,0 +1,252 @@
+//! Durable per-turn execution journal with atomic snapshots and bounded metadata.
+//! This is the 0.4 foundation; it does not yet implement SQLite, encrypted
+//! records, cross-process locking, or automatic replay after a crash.
+use crate::{store, workspace::Workspace};
+use anyhow::{Context, Result, ensure};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    io::Write,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct JournalEvent {
+    pub at: String,
+    pub step: String,
+    pub tool: String,
+    pub outcome: String,
+}
+#[derive(Serialize, Deserialize)]
+struct Journal {
+    id: String,
+    workspace: String,
+    started: String,
+    state: String,
+    events: Vec<JournalEvent>,
+}
+pub struct TaskJournal {
+    file: PathBuf,
+    journal: Journal,
+    cancel: Option<Arc<AtomicBool>>,
+}
+impl TaskJournal {
+    pub fn start(workspace: &Workspace) -> Result<Self> {
+        Self::start_in(workspace, store::data_dir().join("task-journal"))
+    }
+    fn start_in(workspace: &Workspace, directory: PathBuf) -> Result<Self> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let file = directory.join(format!("{id}.json"));
+        let journal = Journal {
+            id,
+            workspace: workspace.root.to_string_lossy().into_owned(),
+            started: chrono::Utc::now().to_rfc3339(),
+            state: "running".into(),
+            events: Vec::new(),
+        };
+        let task = Self {
+            file,
+            journal,
+            cancel: None,
+        };
+        task.persist()?;
+        Ok(task)
+    }
+    fn persist(&self) -> Result<()> {
+        store::check_local_path(&self.file)?;
+        let parent = self.file.parent().context("Missing journal parent")?;
+        fs::create_dir_all(parent)?;
+        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+        temp.write_all(&serde_json::to_vec_pretty(&self.journal)?)?;
+        temp.as_file().sync_all()?;
+        store::persist_local(temp, &self.file)?;
+        Ok(())
+    }
+    pub fn record(&mut self, step: &str, tool: &str, outcome: &str) -> Result<()> {
+        ensure!(
+            step.len() <= 40 && tool.len() <= 80 && outcome.len() <= 60,
+            "Task journal metadata exceeds limits"
+        );
+        self.journal.events.push(JournalEvent {
+            at: chrono::Utc::now().to_rfc3339(),
+            step: step.into(),
+            tool: if crate::policy::classify(tool).is_ok() {
+                tool.into()
+            } else {
+                "unregistered".into()
+            },
+            outcome: outcome.into(),
+        });
+        if self.journal.events.len() > 256 {
+            self.journal.events.drain(..self.journal.events.len() - 256);
+        }
+        self.persist()
+    }
+    pub fn finish(&mut self, state: &str) -> Result<()> {
+        ensure!(
+            matches!(state, "completed" | "failed" | "stopped"),
+            "Invalid terminal task state"
+        );
+        self.journal.state = state.into();
+        self.persist()
+    }
+    pub fn id(&self) -> &str {
+        &self.journal.id
+    }
+    pub fn track_cancellation(&mut self, cancel: &Arc<AtomicBool>) {
+        self.cancel = Some(cancel.clone());
+    }
+}
+impl Drop for TaskJournal {
+    fn drop(&mut self) {
+        if self.journal.state == "running" && !std::thread::panicking() {
+            self.journal.state = if self
+                .cancel
+                .as_ref()
+                .is_some_and(|c| c.load(Ordering::Relaxed))
+            {
+                "stopped"
+            } else {
+                "failed"
+            }
+            .into();
+            let _ = self.persist(); // Existing dispatch marker remains durable if this fails.
+        }
+    }
+}
+fn summary_state(record: &Journal) -> String {
+    let last_dispatch = record.events.iter().rposition(|e| e.step == "dispatch");
+    let last_result = record.events.iter().rposition(|e| e.step == "result");
+    let uncertain = last_dispatch.is_some_and(|d| last_result.is_none_or(|r| r < d))
+        || record
+            .events
+            .iter()
+            .any(|e| e.step == "result" && e.outcome == "failed-or-uncertain");
+    if uncertain {
+        format!(
+            "{} / uncertain effects (manual reconciliation required; never replayed)",
+            record.state
+        )
+    } else if record.state == "running" {
+        "unfinished / possibly interrupted (manual reconciliation required; never replayed)".into()
+    } else {
+        record.state.clone()
+    }
+}
+/// Journal summaries are intentionally read-only; old tasks must never
+/// automatically re-execute commands or writes after a restart.
+pub fn recent_for(workspace: &Workspace, limit: usize) -> Result<String> {
+    recent_scoped(limit, Some(&workspace.root.to_string_lossy()))
+}
+pub fn recent(limit: usize) -> Result<String> {
+    recent_scoped(limit, None)
+}
+fn recent_scoped(limit: usize, scope: Option<&str>) -> Result<String> {
+    let directory = store::data_dir().join("task-journal");
+    store::check_local_path(&directory)?;
+    if !directory.exists() {
+        return Ok("No previous task journal entries.".into());
+    }
+    let mut records = Vec::new();
+    for entry in fs::read_dir(directory)?.flatten().take(500) {
+        let path = entry.path();
+        if store::check_local_path(&path).is_err() {
+            continue;
+        }
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 96 * 1024 {
+            continue;
+        }
+        if let Ok(record) = serde_json::from_slice::<Journal>(&fs::read(path)?)
+            && scope.is_none_or(|workspace| record.workspace == workspace)
+        {
+            records.push(record);
+        }
+    }
+    records.sort_by(|a, b| b.started.cmp(&a.started));
+    let lines: Vec<_> = records
+        .into_iter()
+        .take(limit.min(25))
+        .map(|r| {
+            let status = summary_state(&r);
+            format!(
+                "{} {} {} ({} recorded events)",
+                r.id,
+                r.started,
+                status,
+                r.events.len()
+            )
+        })
+        .collect();
+    if lines.is_empty() {
+        Ok("No previous task journal entries.".into())
+    } else {
+        Ok(lines.join("\n"))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn creates_and_updates_atomic_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path()).unwrap();
+        let mut journal = TaskJournal::start_in(&ws, dir.path().join("journals")).unwrap();
+        journal.record("approval", "edit_file", "denied").unwrap();
+        journal.finish("stopped").unwrap();
+        let bytes = fs::read(&journal.file).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["state"], "stopped");
+        assert_eq!(value["events"][0]["outcome"], "denied");
+        assert!(value["events"][0].get("arguments").is_none());
+    }
+    #[test]
+    fn dispatch_without_result_stays_uncertain_after_reload_and_completion() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path()).unwrap();
+        let mut task = TaskJournal::start_in(&ws, dir.path().join("journals")).unwrap();
+        task.record("dispatch", "edit_file", "uncertain-until-result")
+            .unwrap();
+        let file = task.file.clone();
+        fs::write(dir.path().join("side-effect.txt"), "executed once").unwrap();
+        task.finish("completed").unwrap();
+        drop(task);
+        let loaded: Journal = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+        assert!(summary_state(&loaded).contains("uncertain effects"));
+        assert!(summary_state(&loaded).contains("never replayed"));
+        assert_eq!(
+            fs::read_to_string(dir.path().join("side-effect.txt")).unwrap(),
+            "executed once"
+        );
+    }
+    #[test]
+    fn clean_failure_and_cancellation_are_terminal_and_metadata_is_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path()).unwrap();
+        let mut task = TaskJournal::start_in(&ws, dir.path().join("journals")).unwrap();
+        task.track_cancellation(&Arc::new(AtomicBool::new(true)));
+        for _ in 0..300 {
+            task.record("policy", "read_file", "allowed").unwrap();
+        }
+        assert!(task.record("policy", &"x".repeat(81), "denied").is_err());
+        assert_eq!(task.journal.events.len(), 256);
+        let file = task.file.clone();
+        drop(task);
+        let loaded: Journal = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+        assert_eq!(summary_state(&loaded), "stopped");
+        let task = TaskJournal::start_in(&ws, dir.path().join("journals")).unwrap();
+        let file = task.file.clone();
+        drop(task);
+        let loaded: Journal = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+        assert_eq!(summary_state(&loaded), "failed");
+    }
+}

@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail, ensure};
 use ignore::WalkBuilder;
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -150,7 +150,15 @@ impl Workspace {
             fs::metadata(&path)?.len() <= 512 * 1024,
             "File exceeds the 512 KB text limit; search it or narrow the task"
         );
-        let text = fs::read_to_string(path).context("File is not readable UTF-8 text")?;
+        let mut bytes = Vec::new();
+        fs::File::open(path)?
+            .take(512 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() <= 512 * 1024,
+            "File grew beyond the 512 KB text limit"
+        );
+        let text = String::from_utf8(bytes).context("File is not readable UTF-8 text")?;
         ensure!(!text.contains('\0'), "Binary files are not supported");
         Ok(text)
     }
@@ -312,6 +320,44 @@ mod tests {
                 .is_err()
         );
         assert_eq!(w.read("src/demo.txt").unwrap(), "hello");
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_junctions_are_rejected_for_workspace_and_app_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        let outside = dir.path().join("outside");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("sentinel.txt"), "preserved").unwrap();
+        let link = project.join("escape");
+        let quoted = |p: &Path| p.to_string_lossy().replace('\'', "''");
+        let script = format!(
+            "New-Item -ItemType Junction -Path '{}' -Target '{}' -ErrorAction Stop | Out-Null",
+            quoted(&link),
+            quoted(&outside)
+        );
+        let status = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "Could not create the junction regression fixture"
+        );
+        let ws = Workspace::new(&project).unwrap();
+        assert!(ws.read("escape/sentinel.txt").is_err());
+        assert!(
+            ws.write_reviewed("escape/new.txt", None, "blocked")
+                .is_err()
+        );
+        assert!(crate::store::check_local_path(&link.join("note.json")).is_err());
+        assert_eq!(
+            fs::read_to_string(outside.join("sentinel.txt")).unwrap(),
+            "preserved"
+        );
+        assert!(!outside.join("new.txt").exists());
+        fs::remove_dir(link).unwrap(); // Remove only the junction, never its target.
     }
     #[cfg(unix)]
     #[test]

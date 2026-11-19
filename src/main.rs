@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
         .cloned();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("VMT Local Agent 0.1.0")
+            .with_title(concat!("VMT Local Agent ", env!("CARGO_PKG_VERSION")))
             .with_inner_size([1240.0, 740.0])
             .with_min_inner_size([940.0, 650.0]),
         renderer: eframe::Renderer::Glow,
