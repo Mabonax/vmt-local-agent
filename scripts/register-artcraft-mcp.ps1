@@ -65,6 +65,7 @@ if ($servers.Count -eq 0) {
 }
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 $payload = @{ servers = @($servers) } | ConvertTo-Json -Depth 7
-$payload | Set-Content -LiteralPath $target -Encoding UTF8
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, $payload, $utf8)
 Write-Host "Registered $($servers.Count) ArtCraft MCP servers at $target."
 Write-Warning "Registration is not a sandbox. Every MCP process start/call requires approval in VMT."
