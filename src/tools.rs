@@ -697,6 +697,38 @@ mod tests {
     }
 
     #[test]
+    fn mcp_and_knowledge_mutations_are_reviewed_and_read_only_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut tools = Tools {
+            workspace: Workspace::new(dir.path()).unwrap(),
+            observed: HashMap::new(),
+        };
+        assert!(tools.prepare("mcp_tools", &json!({"server":"wordcraft"}), true, false).is_err());
+        assert!(tools.prepare("mcp_call", &json!({
+            "server":"wordcraft","tool":"export","arguments":{}
+        }), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("mcp_call", &json!({
+                "server":"wordcraft","tool":"export","arguments":{}
+            }), false, false).unwrap(),
+            Prepared::Review(Proposal::Mcp { .. })
+        ));
+        assert!(tools.prepare("index_knowledge",
+            &json!({"model":"nomic-embed-text"}), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("index_knowledge",
+                &json!({"model":"nomic-embed-text"}), false, false).unwrap(),
+            Prepared::Review(Proposal::KnowledgeIndex { .. })
+        ));
+        assert!(tools.prepare("workflow_start", &json!({"kind":"feature"}), true, false).is_err());
+        assert!(matches!(
+            tools.prepare("workflow_start", &json!({"kind":"feature"}), false, false).unwrap(),
+            Prepared::Review(Proposal::Workflow { .. })
+        ));
+        assert!(!dir.path().join("outputs").exists());
+    }
+
+    #[test]
     fn cancellation_before_execution_preserves_the_project() {
         let dir = tempfile::tempdir().unwrap();
         let mut tools = Tools {
