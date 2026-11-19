@@ -258,7 +258,7 @@ impl Tools {
                 Ok("Approved project memory note saved locally.".into())
             }
             Proposal::Mcp { server, operation, tool, arguments } =>
-                mcp::run(server, operation, tool, arguments),
+                mcp::run(server, operation, tool, arguments, cancel),
             Proposal::KnowledgeIndex { model } => knowledge::index(&self.workspace, model),
             Proposal::Workflow { action, kind, evidence } =>
                 workflows::apply_reviewed(&self.workspace, action, kind, evidence),
