@@ -69,7 +69,7 @@ pub fn action_schema() -> Value {
     json!({"type":"object","properties":{
         "kind":{"type":"string","enum":["tool","final"]},
         "message":{"type":"string"},
-        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish"]},
+        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish"]},
         "args":{"type":"object","properties":{
             "path":{"type":"string"},"query":{"type":"string"},"content":{"type":"string"},
             "old":{"type":"string"},"new":{"type":"string"},"command":{"type":"string"},"url":{"type":"string"},
@@ -129,6 +129,12 @@ fn tool_definitions(settings: &Settings) -> Value {
             "mcp_tools",
             "Start a named local MCP server after user approval to discover its tool names. May execute server startup code.",
             json!({"server":{"type":"string"}}), vec!["server"],
+        ),
+        (
+            "mcp_schema",
+            "Read a full cached MCP tool schema after approved mcp_tools discovery. Does not start a new process.",
+            json!({"server":{"type":"string"},"tool":{"type":"string"}}),
+            vec!["server","tool"],
         ),
         (
             "mcp_call",
