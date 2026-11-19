@@ -122,7 +122,7 @@ inherit Codex or Claude Code MCP registrations automatically.
 1. Open a disposable Craft project and load the `artcraft-suite` skill.
 2. Call `mcp_servers` to find an installed app.
 3. Call `mcp_tools` for the chosen server and approve process startup.
-4. Read the returned real tool definitions and schemas.
+4. Read the returned real tool names, then call `mcp_schema` on the selected tool to retrieve its complete cached input schema without restarting the server.
 5. Call `mcp_call` with the actual tool name and JSON parameters; approve each
    call, preferably using staged copies.
 6. Export to the approved outputs directory, reopen it through the native app,
