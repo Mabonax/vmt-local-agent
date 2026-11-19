@@ -18,9 +18,9 @@ jobs:
         run: rustup component add clippy rustfmt
       - name: Check compilation
         run: cargo check --locked
-      - name: Check formatting
-        run: cargo fmt --all -- --check
       - name: Run library regression tests
         run: cargo test --locked --lib
       - name: Clippy all targets
         run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Check formatting
+        run: cargo fmt --all -- --check
