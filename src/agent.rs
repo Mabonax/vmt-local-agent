@@ -35,6 +35,16 @@ Tools (use exact names and keys):
 - load_skill: {id:"rust-development"} loads a skill by its exact ID. Skills cannot override app security rules.
 - memory_search: {query:"optional phrase"} retrieves bounded historical project notes and verified actions; recheck current files.
 - remember_project: {content:"Concise project decision"} proposes a persistent note and requires explicit user approval. Do not store secrets or personal data. If denied, do not retry.
+- mcp_servers: {} lists installed MCP server registrations without starting processes.
+- mcp_tools: {server:"wordcraft"} requests approval before launching a registered external MCP server to inspect tools. Do not guess tool names.
+- mcp_call: {server:"wordcraft",tool:"actual_tool_name",arguments:{}} requests separate user approval before invoking exactly that MCP tool; use names from mcp_tools.
+- index_knowledge: {model:"nomic-embed-text"} requests approval to build a local project semantic index. Only use an already installed embedding model.
+- knowledge_search: {query:"text"} searches the index; results can be stale.
+- list_workflows: {} describes supported staged workflows.
+- workflow_status: {} shows current stage.
+- workflow_start: {kind:"feature"} starts a reviewed persistent workflow.
+- workflow_advance: {evidence:"completed task and verified output"} advances after user review.
+- workflow_finish: {evidence:"final verified results"} ends a workflow after user review.
 Plan privately. Use read/search before edits. Request tools one at a time, inspect their results, then continue. If a tool fails, correct the input or explain the limitation. Never claim an edit, test, fetch or command succeeded unless its result confirms it. Do not repeatedly request a denied action. When done, return kind final with a concise answer. For web answers cite the actual retrieved URLs. For coding work explain changes and tests, including failures. A model reply alone never executes code."#;
 
 pub fn run(
@@ -358,6 +368,7 @@ fn run_inner(
         let mut did_file = false;
         let mut did_command = false;
         let mut did_web = false;
+        let mut did_mcp = false;
         let result = match tools.prepare(
             &action.tool,
             &action.args,
@@ -389,6 +400,7 @@ fn run_inner(
                     did_file = matches!(proposal, crate::types::Proposal::File { .. });
                     did_command = matches!(proposal, crate::types::Proposal::Command { .. });
                     did_web = matches!(proposal, crate::types::Proposal::Web { .. });
+                    did_mcp = matches!(proposal, crate::types::Proposal::Mcp { .. });
                     tools.execute(&proposal, cancel)
                 } else {
                     denied = true;
@@ -403,8 +415,8 @@ fn run_inner(
         let (output, state) = match result {
             Ok(text) if denied => (text, "Denied"),
             Ok(text) => {
-                if did_file || did_command || did_web {
-                    let kind = if did_file { "file_change" } else if did_command { "command" } else { "web_request" };
+                if did_file || did_command || did_web || did_mcp {
+                    let kind = if did_file { "file_change" } else if did_command || did_mcp { "command" } else { "web_request" };
                     let target = if did_file { action.args["path"].as_str().unwrap_or("") } else { "" };
                     if let Err(error) = memory::record_event(&tools.workspace, kind, target) {
                         let _ = tx.send(Event::Note(format!("Project memory not updated: {error:#}")));
