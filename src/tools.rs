@@ -1,5 +1,5 @@
 use crate::{
-    knowledge, mcp, memory, skills, workflows,
+    knowledge, mcp, memory, policy, skills, workflows,
     types::Proposal,
     workspace::{Workspace, clip},
 };
@@ -40,6 +40,9 @@ impl Tools {
         read_only: bool,
         web: bool,
     ) -> Result<Prepared> {
+        // This independent guard applies to every tool, including newly added MCP
+        // and knowledge tools; prompts cannot grant missing capabilities.
+        policy::authorize(name, read_only, web)?;
         let path = args["path"].as_str().unwrap_or(".");
         match name {
             "list_workflows" => Ok(Prepared::Output(workflows::catalog())),
@@ -221,10 +224,7 @@ impl Tools {
                 if name == "web_fetch" {
                     validate_url(string(args, "url")?)?;
                 } else {
-                    ensure!(
-                        !string(args, "query")?.trim().is_empty(),
-                        "The search query is empty"
-                    );
+                    policy::validate_public_search(string(args, "query")?)?;
                 }
                 Ok(Prepared::Review(Proposal::Web {
                     tool: name.into(),
