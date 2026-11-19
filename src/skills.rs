@@ -3,7 +3,7 @@
 //! Only exact registry IDs can be loaded by the model.
 use crate::{store, workspace::clip};
 use anyhow::{Result, ensure};
-use std::{fs, path::Path};
+use std::fs;
 
 const MAX_SKILL_BYTES: u64 = 16 * 1024;
 const MAX_SKILLS: usize = 32;
