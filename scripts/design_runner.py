@@ -308,9 +308,76 @@ def measure_text(font, sample, size, width):
             'limitation': 'Plain-text whitespace wrapping estimate, not native Office layout or glyph-coverage certification.'}
 
 
+def bounded_number(value, low, high):
+    if type(value) not in (int, float) or not low <= value <= high:
+        raise ValueError('Number outside supported bounds')
+    return value
+
+
+def layout_grid(data):
+    if not isinstance(data, dict) or set(data) - {'width', 'height', 'margin', 'gutter', 'columns', 'rows'}:
+        raise ValueError('Invalid grid fields')
+    w = bounded_number(data['width'], 100, 4000)
+    h = bounded_number(data['height'], 100, 4000)
+    m = bounded_number(data.get('margin', 24), 0, 500)
+    g = bounded_number(data.get('gutter', 12), 0, 100)
+    c, r = data.get('columns', 12), data.get('rows', 1)
+    if type(c) is not int or type(r) is not int or not 1 <= c <= 12 or not 1 <= r <= 12:
+        raise ValueError('Grid dimensions must be integers 1-12')
+    cw, ch = (w - 2*m - (c-1)*g)/c, (h - 2*m - (r-1)*g)/r
+    if min(cw, ch) < 4:
+        raise ValueError('Grid has insufficient usable space')
+    return {'unit': 'pt', 'width': w, 'height': h, 'margin': m, 'gutter': g,
+            'cells': [{'row': y+1, 'column': x+1, 'x': round(m+x*(cw+g), 4),
+                       'y': round(m+y*(ch+g), 4), 'w': round(cw, 4), 'h': round(ch, 4)}
+                      for y in range(r) for x in range(c)]}
+
+
+def layout_check(data):
+    if not isinstance(data, dict) or set(data) - {'width', 'height', 'margin', 'elements'}:
+        raise ValueError('Invalid layout fields')
+    w = bounded_number(data['width'], 100, 4000)
+    h = bounded_number(data['height'], 100, 4000)
+    m = bounded_number(data.get('margin', 0), 0, 500)
+    if 2*m >= min(w,h):
+        raise ValueError('Invalid safe margin')
+    elements = data['elements']
+    if not isinstance(elements, list) or not 1 <= len(elements) <= 64:
+        raise ValueError('Provide 1-64 elements')
+    seen, issues = set(), []
+    for e in elements:
+        if not isinstance(e, dict) or set(e) != {'id', 'x', 'y', 'w', 'h'}:
+            raise ValueError('Invalid element fields')
+        name = e['id']
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,48}', name) or name in seen:
+            raise ValueError('Invalid or duplicate element ID')
+        seen.add(name)
+        for k in ('x','y'):
+            bounded_number(e[k], -4000, 4000)
+        for k in ('w','h'):
+            bounded_number(e[k], .1, 4000)
+        if e['x'] < m or e['y'] < m or e['x']+e['w'] > w-m+.0001 or e['y']+e['h'] > h-m+.0001:
+            issues.append({'type': 'outside_safe_area', 'id': name})
+    total = len(issues)
+    for i,a in enumerate(elements):
+        for b in elements[i+1:]:
+            dx = min(a['x']+a['w'],b['x']+b['w'])-max(a['x'],b['x'])
+            dy = min(a['y']+a['h'],b['y']+b['h'])-max(a['y'],b['y'])
+            if dx > .001 and dy > .001:
+                total += 1
+                if len(issues) < 100:
+                    issues.append({'type': 'overlap', 'id': a['id'], 'other': b['id'], 'area_pt2': round(dx*dy, 3)})
+    return {'status': 'PASS' if total == 0 else 'REVIEW_REQUIRED', 'issue_count': total,
+            'issues': issues[:100], 'truncated': total > 100,
+            'limitation': 'Axis-aligned rectangles only; intentional layering and text fit require separate review.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation in ('layout_grid', 'layout_check'):
+        data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
+        return layout_grid(data) if operation == 'layout_grid' else layout_check(data)
     if operation == 'type_scale':
         return type_scale(args['mode'], args.get('size', 12))
     if operation == 'measure_text':

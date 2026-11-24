@@ -143,6 +143,27 @@ class DesignRunnerTests(unittest.TestCase):
             self.assertGreater(narrow['line_count'], wide['line_count'])
             self.assertTrue(original.called)
 
+    def test_layout_grid(self):
+        Path('input').write_text(json.dumps({'width': 960, 'height': 540, 'margin': 30, 'gutter': 12, 'columns': 3, 'rows': 2}))
+        grid = runner.run({'args': {'operation': 'layout_grid'}})
+        self.assertEqual(len(grid['cells']), 6)
+        self.assertAlmostEqual(grid['cells'][-1]['x'] + grid['cells'][-1]['w'], 930, places=3)
+        with self.assertRaises(ValueError):
+            runner.layout_grid({'width': 100, 'height': 100, 'margin': 50})
+
+    def test_layout_check(self):
+        data = {'width': 960, 'height': 540, 'margin': 20, 'elements': [
+            {'id': 'a', 'x': 20, 'y': 20, 'w': 100, 'h': 50},
+            {'id': 'b', 'x': 120, 'y': 20, 'w': 100, 'h': 50}]}
+        self.assertEqual(runner.layout_check(data)['status'], 'PASS')
+        data['elements'][1]['x'] = 10
+        result = runner.layout_check(data)
+        self.assertEqual(result['issue_count'], 2)
+        self.assertEqual({i['type'] for i in result['issues']}, {'outside_safe_area', 'overlap'})
+        data['elements'][1]['id'] = 'a'
+        with self.assertRaises(ValueError):
+            runner.layout_check(data)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

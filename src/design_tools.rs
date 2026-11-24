@@ -102,6 +102,7 @@ pub fn status(id: &str) -> &'static str {
         "professional-document-design",
         "professional-document-design-v2",
         "typography-intelligence",
+        "layout-intelligence",
     ]
     .contains(&id)
     {
@@ -115,7 +116,9 @@ pub fn status(id: &str) -> &'static str {
     }
 }
 pub fn integration_note(id: &str) -> &'static str {
-    if id == "typography-intelligence" {
+    if id == "layout-intelligence" {
+        "\nUse design_tool layout_grid or layout_check with a project-relative JSON input. Results use points and top-left coordinates. Geometry is not visual certification."
+    } else if id == "typography-intelligence" {
         "\nUse design_tool type_scale or measure_text. Measurements use the approved local font and are estimates of Office layout, not visual certification."
     } else if id == "colour-intelligence-v2" {
         "\nUse design_tool operations repair, gradient, categorical, simulate, system and distance. Do not execute skill scripts via shell. Each operation requires review. V1 palette/contrast/extract remain separate. Repair targets 4.5:1; simulation and distance do not certify accessibility."
@@ -138,7 +141,9 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ["type_scale", "measure_text"].contains(&self.operation.as_str()) {
+        if ["layout_grid", "layout_check"].contains(&self.operation.as_str()) {
+            ("layout-intelligence", "SKILL.md")
+        } else if ["type_scale", "measure_text"].contains(&self.operation.as_str()) {
             ("typography-intelligence", "SKILL.md")
         } else if ADVANCED_COLOUR.contains(&self.operation.as_str()) {
             ("colour-intelligence-v2", "scripts/advanced.py")
@@ -156,7 +161,8 @@ impl Request {
             ["palette", "contrast", "extract", "compose", "render"].contains(&operation)
                 || ADVANCED_COLOUR.contains(&operation)
                 || operation == "compose_v2"
-                || ["type_scale", "measure_text"].contains(&operation),
+                || ["type_scale", "measure_text"].contains(&operation)
+                || ["layout_grid", "layout_check"].contains(&operation),
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -169,6 +175,7 @@ impl Request {
             "categorical" => &["seed", "count"],
             "simulate" => &["seed", "mode"],
             "system" => &["seed", "theme"],
+            "layout_grid" | "layout_check" => &["input"],
             "type_scale" => &["mode", "size"],
             "measure_text" => &["font", "sample", "size", "width"],
             _ => &["input", "output"],
@@ -272,7 +279,16 @@ impl Request {
                 "Extraction count must be 2-16"
             );
         }
-        if ["extract", "compose", "compose_v2", "render"].contains(&operation) {
+        if [
+            "extract",
+            "compose",
+            "compose_v2",
+            "render",
+            "layout_grid",
+            "layout_check",
+        ]
+        .contains(&operation)
+        {
             let input = self.input.as_deref().context("Input path is required")?;
             ensure!(input.len() <= 240, "Input path too long");
             workspace.resolve(input, false)?;
@@ -282,7 +298,7 @@ impl Request {
                 .unwrap_or("")
                 .to_ascii_lowercase();
             let extensions: &[&str] = match operation {
-                "compose" | "compose_v2" => &["json"],
+                "compose" | "compose_v2" | "layout_grid" | "layout_check" => &["json"],
                 "extract" => &["png", "jpg", "jpeg", "webp"],
                 _ => &["docx", "pptx"],
             };
@@ -328,7 +344,10 @@ impl Request {
             .map(|input| {
                 bounded(
                     &workspace.resolve(input, false)?,
-                    if matches!(self.operation.as_str(), "compose" | "compose_v2") {
+                    if matches!(
+                        self.operation.as_str(),
+                        "compose" | "compose_v2" | "layout_grid" | "layout_check"
+                    ) {
                         64 * 1024
                     } else {
                         16 * 1024 * 1024
