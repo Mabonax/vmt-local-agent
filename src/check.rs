@@ -14,6 +14,20 @@ fn main() -> anyhow::Result<()> {
         .nth(2)
         .unwrap_or_else(|| "qwen3.5:4b".into());
     match model.as_str() {
+        "--document-authoring" => {
+            let project = raw.get(3).ok_or_else(|| anyhow::anyhow!("Provide model, project, request file, stage 1-3 and optional output-token limit"))?;
+            let request = raw
+                .get(4)
+                .ok_or_else(|| anyhow::anyhow!("Provide request file"))?;
+            let stage = raw
+                .get(5)
+                .ok_or_else(|| anyhow::anyhow!("Provide stage 1-3"))?
+                .parse()?;
+            let output = raw.get(6).map(|v| v.parse()).transpose()?.unwrap_or(2048);
+            return vmt_local_agent::document_trial::run(
+                &selected, project, request, stage, output,
+            );
+        }
         "--creative-live" => {
             let project = raw.get(3).ok_or_else(|| {
                 anyhow::anyhow!("Provide model, fixture project and native/json protocol")
