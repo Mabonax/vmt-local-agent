@@ -39,6 +39,8 @@ class Acceptance(unittest.TestCase):
         fixture=dispatch("pdf.generate",{"title":"Fixture","body":"Example"})["result"]["content"]
         EXAMPLES.update({"pdf.inspect":{"content":fixture},"pdf.extract_text":{"content":fixture,"pages":[1]},"pdf.split":{"content":fixture,"pages":[1]},"pdf.merge":{"documents":[fixture,fixture]}})
         EXAMPLES["artifact.inspect"]={"content":fixture}
+        preview=dispatch("pdf.render",{"content":fixture,"page":1,"dpi":72})["result"]["content"]
+        EXAMPLES.update({"pdf.render":{"content":fixture,"page":1,"dpi":72},"image.inspect":{"content":preview},"image.compare":{"first":preview,"second":preview}})
         seen=set()
         for folder in sorted(ROOT.iterdir()):
             if not folder.is_dir() or not (folder/"manifest.json").is_file(): continue
