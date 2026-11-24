@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "runtime": "python3",
+  "entrypoint": "runner.py",
+  "protocol": "stdin-json-v1",
+  "permissions": [],
+  "network": false,
+  "timeout_seconds": 5,
+  "max_input_bytes": 1048576,
+  "max_output_bytes": 1048576,
+  "tools": [
+    {
+      "name": "project.detect",
+      "description": "Detect project markers from supplied paths",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "maxItems": 2000,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "code.metrics",
+      "description": "Count physical source lines and characters",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "code.dependencies",
+      "description": "Extract top-level declared dependencies",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "npm",
+              "composer",
+              "cargo"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "format",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "python.imports",
+      "description": "Extract Python imports without execution",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
