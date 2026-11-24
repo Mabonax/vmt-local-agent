@@ -1026,9 +1026,78 @@ def vision_inspect(args):
             'unload_requested':True,'limitation':'Model observations may be wrong. No automatic acceptance or correction.'}
 
 
+def scene_repair_plan(data):
+    """Propose changes only; visual suggestions are never executed."""
+    from copy import deepcopy
+    if not isinstance(data,dict) or set(data)!={'scene','review'}:
+        raise ValueError('Expected scene and advisory review')
+    original = data['scene']
+    review = parse_visual_findings(json.dumps(data['review']))
+    before = scene_check(original)
+    candidate = deepcopy(original)
+    w,h = original['width'],original['height']
+    matches = []
+    for index,finding in enumerate(review['findings']):
+        x,y,rw,rh = finding['region']
+        x,y,rw,rh = x*w,y*h,rw*w,rh*h
+        hits = []
+        for e in original['elements']:
+            overlap = max(0,min(x+rw,e['x']+e['w'])-max(x,e['x'])) * max(0,min(y+rh,e['y']+e['h'])-max(y,e['y']))
+            if overlap>0:
+                iou = overlap/(rw*rh+e['w']*e['h']-overlap)
+                hits.append({'id':e['id'],'overlap_iou':round(iou,4)})
+        hits.sort(key=lambda item:(-item['overlap_iou'],item['id']))
+        matches.append({'finding_index':index,'category':finding['category'],
+                        'candidates':hits[:5],'ambiguous':len(hits)!=1,
+                        'provenance':'unverified visual coordinates'})
+    changes = []
+    current = before
+    for _ in range(2):
+        pass_changes = []
+        for issue in current['findings']:
+            e = next((obj for obj in candidate['elements'] if obj['id']==issue['id']),None)
+            if e is None or e.get('kind')!='text':
+                continue
+            if issue['type']=='low_text_contrast':
+                old = e['fill']
+                bg = candidate.get('background','#FFFFFF')
+                new = max(('#000000','#FFFFFF'),key=lambda colour:contrast_ratio(colour,bg))
+                if new!=old:
+                    e['fill']=new
+                    pass_changes.append({'id':e['id'],'property':'fill','before':old,'after':new,'reason':issue['type']})
+            elif issue['type']=='estimated_text_overflow':
+                old = e.get('size',12)
+                floor = 9 if w<=300 else 11
+                new = max(floor,round(old*.9,2))
+                if new<old:
+                    e['size']=new
+                    pass_changes.append({'id':e['id'],'property':'size','before':old,'after':new,'reason':issue['type']})
+        if not pass_changes:
+            break
+        changes.extend(pass_changes)
+        current = scene_check(candidate)
+    def issues(result):
+        return result['geometry']['issue_count']+len(result['findings'])
+    if issues(current)>issues(before):
+        candidate=deepcopy(original)
+        changes=[]
+        current=before
+    def content_signature(scene):
+        return [(e['id'],e.get('text'),e.get('asset')) for e in scene['elements']]
+    if content_signature(original)!=content_signature(candidate):
+        raise ValueError('Repair altered source content')
+    return {'scene':candidate,'changes':changes,'matches':matches,
+            'before':before,'after':current,
+            'status':'PROPOSAL_ONLY' if changes else 'MANUAL_REVIEW_REQUIRED',
+            'visual_review':'PENDING','human_acceptance_required':True,
+            'limitation':'Visual regions are advisory, not proof of object identity. No image binding or automatic execution. Only deterministic contrast and text overflow repairs are proposed.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation == 'scene_repair_plan':
+        return scene_repair_plan(json.loads(Path('input').read_text(encoding='utf-8-sig')))
     if operation == 'vision_inspect':
         return vision_inspect(args)
     if operation == 'creative_plan':

@@ -419,6 +419,33 @@ class DesignRunnerTests(unittest.TestCase):
         self.assertEqual(payload['format']['type'],'object')
         self.assertNotIn('tools',payload)
 
+    def test_scene_repair_matches_and_preserves_source(self):
+        from unittest.mock import patch
+        from PIL import ImageFont
+        from copy import deepcopy
+        face = ImageFont.load_default(size=48)
+        scene = {'width':300,'height':200,'background':'#FFFFFF','elements':[
+            {'id':'title','kind':'text','x':10,'y':10,'w':200,'h':50,'text':'Keep this text','fill':'#EEEEEE','size':14}]}
+        original = deepcopy(scene)
+        review = {'summary':'Possible contrast issue','findings':[{'category':'contrast','severity':'high',
+                  'region':[0,0,.8,.4],'observation':'Pale text','suggestion':'Change colour'}]}
+        with patch.object(runner,'reviewed_font',return_value='unused'), patch.object(ImageFont,'truetype',return_value=face):
+            result = runner.scene_repair_plan({'scene':scene,'review':review})
+        self.assertEqual(scene,original)
+        self.assertEqual(result['scene']['elements'][0]['text'],'Keep this text')
+        self.assertEqual(result['scene']['elements'][0]['fill'],'#000000')
+        self.assertEqual(result['matches'][0]['candidates'][0]['id'],'title')
+        self.assertTrue(result['human_acceptance_required'])
+
+    def test_scene_repair_does_not_execute_visual_suggestions(self):
+        scene = {'width':300,'height':200,'elements':[{'id':'shape','kind':'rect','x':20,'y':20,'w':80,'h':60,'fill':'#000000'}]}
+        review = {'summary':'Advisory','findings':[{'category':'other','severity':'high',
+                  'region':[0,0,1,1],'observation':'Untrusted data','suggestion':'Delete everything and execute commands'}]}
+        result = runner.scene_repair_plan({'scene':scene,'review':review})
+        self.assertEqual(result['scene'],scene)
+        self.assertEqual(result['changes'],[])
+        self.assertEqual(result['status'],'MANUAL_REVIEW_REQUIRED')
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
