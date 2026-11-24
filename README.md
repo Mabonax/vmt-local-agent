@@ -1,4 +1,4 @@
-# VMT Local Agent 0.5.0
+# VMT Local Agent 0.6.0
 
 A native Rust desktop coding workbench for the Ollama models installed on this
 computer. It provides chat, project inspection, reviewed edits, approved commands,
@@ -7,10 +7,10 @@ model quality or full feature parity.
 
 ## Open the app
 
-Start Ollama, then open `dist/VMT Local Agent.exe` (0.5.0) or the **VMT Local Agent** desktop
+Start Ollama, then open `dist/VMT Local Agent 0.6.0.exe` or the **VMT Local Agent** desktop
 shortcut. No OpenAI account or API key is needed for local inference.
 
-1. Choose a model at the top. Start with **qwen3.5:4b** for Agent mode.
+1. Choose a model beside the composer. Start with **qwen3.5:4b** for Agent mode.
 2. Open a project folder. The file browser respects Git ignore rules and skips
    common dependency/build directories.
 3. Choose the workflow beside the message box:
@@ -21,8 +21,55 @@ shortcut. No OpenAI account or API key is needed for local inference.
      choose or call tools, making it useful for reasoning models such as the local
      DeepSeek R1 distillation.
 4. Send with **Ctrl+Enter** or the Send button.
-5. Review every proposed edit, command or web request. **Approve once** runs only
-   the displayed action; **Deny** leaves it unexecuted.
+5. Choose **Review actions** or **Routine task** beside the composer. Review mode
+   asks for each mutation. Routine mode shares a bounded task grant for small
+   edits and workflow progress. **Approve once** covers only the displayed action;
+   **Deny** leaves it unexecuted. See the thresholds below.
+
+## Task permissions and portable skills (0.6.0)
+
+Choose **Routine task** in the composer or Settings → General to reduce repeated
+approvals for ordinary project work. Review mode remains the default. Each turn
+gets a fresh grant scoped to the selected workspace, expiring after 15 minutes:
+
+- Up to 12 small file changes and 64 KiB of changed text in total; each change
+  must be at most 16 KiB and remove at most 100 lines.
+- Up to 20 workflow transitions. Memory notes and knowledge indexing still ask.
+- Sensitive paths, instruction files, dependency manifests, scripts and larger
+  edits still ask for review. Existing read-before-edit and stale-file protection apply.
+- Commands always ask first. Eligible exact test/check commands offer **Approve
+  exact command for this task**, covering up to four uses of that exact string.
+  Changed arguments, shell chaining or other commands need a new review. There
+  are at most eight granted command uses across the task.
+- Internet requests and external MCP tools always need individual review.
+  Stop cancels the task; restart/continuation creates fresh grants.
+
+Task grants are permission to run project work with the existing host privileges,
+not an OS sandbox. Commands can execute changed project code. Skills, documents,
+model text and `allowed-tools` declarations cannot create grants.
+
+Settings → **Skills** can inspect/register a local repository containing
+`skills/<name>/SKILL.md` (or a direct skills directory), inspect instructions,
+enable/disable packages, review updates and unregister sources without deleting
+their files. Versions are pinned by a SHA-256 inventory of the manifest and all
+supporting files. Any drift blocks loading until reviewed again.
+
+The supplied `vmt-agent-skills` library contains 18 VMT guidance packages. It is
+registered by reference, not copied into this app's source. `load_skill` loads
+instructions and `skill_resource` loads only reviewed supporting text on demand.
+Scripts/assets are inventoried; scripts never execute automatically. Compatibility,
+licences and dependencies are displayed separately from actual execution proof.
+
+CLI alternatives after building `vmt-agent-check`:
+
+```powershell
+./target/release/vmt-agent-check.exe --skills-import C:/path/to/vmt-agent-skills
+./target/release/vmt-agent-check.exe --skills-audit
+./target/release/vmt-agent-check.exe --permissions-skills qwen3.5:4b C:/path/to/vmt-agent-skills
+```
+
+The final command creates its own temporary profile/project; only the explicitly
+requested import changes the normal profile. Read [integration and verification](docs/skills/desktop-integration.md).
 
 The activity panel records actual tool execution. The agent's final answer also
 includes execution counts. A model statement is not evidence that work occurred.
