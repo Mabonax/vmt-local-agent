@@ -1,0 +1,37 @@
+"""Host-only artifact-aware tool execution. No model-controlled paths."""
+from dispatch import dispatch
+
+PRODUCERS={"office.docx":"docx","office.xlsx":"xlsx","office.pptx":"pptx",
+           "pdf.generate":"pdf","pdf.merge":"pdf","pdf.split":"pdf"}
+SINGLE={"pdf.inspect","pdf.extract_text","pdf.split","artifact.inspect","artifact.hash"}
+
+class ArtifactHost:
+    def __init__(self, store):
+        self.store=store
+
+    def call(self, name, args, previous=None):
+        if name=="artifact.list":
+            if args!={} or previous is not None: raise ValueError("Invalid arguments")
+            return {"ok":True,"result":{"artifacts":self.store.list()}}
+        if name=="artifact.metadata":
+            if type(args) is not dict or set(args)!={"artifact_id"} or previous is not None: raise ValueError("Invalid arguments")
+            return {"ok":True,"result":self.store.metadata(args["artifact_id"])}
+        if type(args) is not dict: raise ValueError("Invalid arguments")
+        args=dict(args)
+        if previous is not None and name not in PRODUCERS: raise ValueError("Unexpected version reference")
+        if name in SINGLE:
+            if "content" in args or "artifact_id" not in args: raise ValueError("Use artifact reference")
+            artifact_id=args.pop("artifact_id")
+            if name.startswith("pdf.") and self.store.metadata(artifact_id)["extension"]!="pdf": raise ValueError("Expected PDF")
+            args["content"]=self.store.retrieve(artifact_id)
+        elif name=="pdf.merge":
+            if set(args)!={"artifact_ids"}: raise ValueError("Use artifact references")
+            ids=args["artifact_ids"]
+            if type(ids) is not list or not 1<=len(ids)<=5: raise ValueError("Invalid references")
+            if any(self.store.metadata(i)["extension"]!="pdf" for i in ids): raise ValueError("Expected PDF")
+            args={"documents":[self.store.retrieve(i) for i in ids]}
+        response=dispatch(name,args)
+        if response["ok"] and name in PRODUCERS:
+            if response["result"].get("extension")!=PRODUCERS[name]: raise ValueError("Unexpected artifact format")
+            return {"ok":True,"result":self.store.store(response["result"],previous)}
+        return response
