@@ -1,4 +1,4 @@
-# VMT Local Agent 0.6.1
+# VMT Local Agent 0.6.2
 
 A native Rust desktop coding workbench for the Ollama models installed on this
 computer. It provides chat, project inspection, reviewed edits, approved commands,
@@ -7,7 +7,7 @@ model quality or full feature parity.
 
 ## Open the app
 
-Start Ollama, then open `dist/VMT Local Agent 0.6.1.exe` or the **VMT Local Agent** desktop
+Start Ollama, then open `dist/VMT Local Agent 0.6.2.exe` or the **VMT Local Agent** desktop
 shortcut. No OpenAI account or API key is needed for local inference.
 
 1. Choose a model beside the composer. Start with **qwen3.5:4b** for Agent mode.
@@ -25,6 +25,23 @@ shortcut. No OpenAI account or API key is needed for local inference.
    asks for each mutation. Routine mode shares a bounded task grant for small
    edits and workflow progress. **Approve once** covers only the displayed action;
    **Deny** leaves it unexecuted. See the thresholds below.
+
+## Existing Word documents and copying (0.6.2)
+
+For an existing Word CV, ask Agent mode to use Colour Intelligence and Professional
+Document Design. It can inspect the DOCX, generate/audit an accent, format a new
+DOCX while preserving the source text and other package parts, and render review
+images. Use a new output filename; originals are never overwritten by these tools.
+The CV preset currently targets plain, English-heading CVs and is not a general
+Word layout editor. Human visual review remains necessary.
+
+Responses now support **Copy response** with native clipboard feedback and
+**Select text** for keyboard selection. Plain response text is read-only and
+supports Ctrl+A/Ctrl+C; right-click offers copying. Native clipboard integration
+is enabled in the eframe build. Unresolved tool failures suppress an unverified
+model success narrative instead of displaying it beneath a warning.
+
+See [the local-agent CV evaluation and changes](docs/skills/document-workflow-062.md).
 
 ## Design skills (0.6.1)
 

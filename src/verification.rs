@@ -1015,7 +1015,7 @@ pub fn design_skills_check(model: &str, source: &str) -> Result<()> {
                     if action.title == "skill_resource" {
                         references += 1;
                     }
-                    if action.title == "design_tool" {
+                    if crate::design_tools::is_tool(&action.title) {
                         completed += 1;
                     }
                 }
@@ -1059,6 +1059,321 @@ pub fn design_skills_check(model: &str, source: &str) -> Result<()> {
     ensure!(
         passed,
         "Live design acceptance incomplete; inspect report and artifacts"
+    );
+    Ok(())
+}
+
+/// User-document evaluation through the actual local model and reviewed broker.
+/// Only an unchanged source copy is exposed; no command or arbitrary write is approved.
+pub fn document_task_check(model: &str, input: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    let original = std::path::Path::new(input).canonicalize()?;
+    ensure!(
+        original.is_file()
+            && original
+                .extension()
+                .is_some_and(|value| value.eq_ignore_ascii_case("docx")),
+        "Provide an existing DOCX file"
+    );
+    ensure!(
+        fs::metadata(&original)?.len() <= 16 * 1024 * 1024,
+        "Source exceeds DOCX size limit"
+    );
+    let bytes = fs::read(&original)?;
+    let original_hash = format!("{:x}", Sha256::digest(&bytes));
+    let registry = fs::read(store::data_dir().join("skill-libraries.json"))?;
+    let runtime = fs::read(store::data_dir().join("design-runtime.json"))?;
+    let root = std::env::current_dir()?
+        .join(".local")
+        .join(format!("document-task-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    fs::create_dir_all(&project)?;
+    fs::write(project.join("CV_Template.docx"), bytes)?;
+    store::configure_data_dir(root.join("profile"))?;
+    fs::write(store::data_dir().join("skill-libraries.json"), registry)?;
+    fs::write(store::data_dir().join("design-runtime.json"), runtime)?;
+    let request = "Improve the formatting of CV_Template.docx using BOTH added skills, colour-intelligence and professional-document-design. Preserve every word and placeholder; do not invent or remove CV content. Use the colour skill to choose and audit a restrained accessible accent and apply that accent to the existing document. Create CV_Template_Refined.docx as a real, changed Word file. Use the dedicated existing-document operations, not copying or JSON recomposition. Render the original into review-before and the result into review-cv so a human can compare them. Do not use shell commands, internet, MCP or memory writes. The source must stay unchanged. You have no image-viewing tool: report honestly what was executed and what visual review remains. Work through the actual tools; a response alone is not completion.";
+    let settings = Settings {
+        model: model.into(),
+        context_tokens: 12288,
+        max_steps: 40,
+        ..Default::default()
+    };
+    let (tx, rx) = mpsc::channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = cancel.clone();
+    let path = project.to_string_lossy().into_owned();
+    let started = Instant::now();
+    let worker = std::thread::spawn(move || {
+        agent::run(
+            settings,
+            path,
+            vec![ChatEntry {
+                role: "user".into(),
+                content: request.into(),
+                ..Default::default()
+            }],
+            tx,
+            stop,
+            eframe::egui::Context::default(),
+        )
+    });
+    let mut loaded = std::collections::BTreeSet::new();
+    let mut operations = Vec::new();
+    let mut approvals = 0;
+    let mut denied = 0;
+    let mut failed_tools = Vec::new();
+    let mut answer = String::new();
+    let mut errors = Vec::new();
+    let mut selected_accent = String::new();
+    let mut denied_design_requests = Vec::new();
+    while let Ok(event) = rx.recv_timeout(Duration::from_secs(300)) {
+        match event {
+            Event::Approval(action) => {
+                let allow = if let Proposal::Design { plan } = &action.proposal {
+                    let r = &plan.request;
+                    match r.operation.as_str() {
+                        "palette" | "contrast" => true,
+                        "inspect_document" => {
+                            r.input.as_deref() == Some("CV_Template.docx")
+                                || r.input.as_deref() == Some("CV_Template_Refined.docx")
+                        }
+                        "format_document" => {
+                            r.input.as_deref() == Some("CV_Template.docx")
+                                && r.output.as_deref() == Some("CV_Template_Refined.docx")
+                        }
+                        "render" => {
+                            r.input.as_deref().is_some_and(|input| {
+                                let workspace = Workspace {
+                                    root: plan.workspace.clone(),
+                                };
+                                workspace.resolve(input, false).is_ok_and(|path| {
+                                    path == plan.workspace.join("CV_Template.docx")
+                                        || path == plan.workspace.join("CV_Template_Refined.docx")
+                                })
+                            }) && r.output.is_some()
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+                if allow {
+                    approvals += 1;
+                } else {
+                    denied += 1;
+                    if let Proposal::Design { plan } = &action.proposal {
+                        denied_design_requests.push(serde_json::to_value(&plan.request)?);
+                    }
+                }
+                action
+                    .reply
+                    .send(crate::types::ApprovalDecision::from(allow))?;
+            }
+            Event::Activity(action) => {
+                if action.state == "Complete" {
+                    if action.title == "load_skill" {
+                        for id in ["colour-intelligence", "professional-document-design"] {
+                            if action.detail.contains(id) {
+                                loaded.insert(id.to_string());
+                            }
+                        }
+                    }
+                    if crate::design_tools::is_tool(&action.title)
+                        && let Ok(result) = serde_json::from_str::<Value>(&action.detail)
+                    {
+                        if result["operation"] == "format_document" {
+                            selected_accent = result["accent"].as_str().unwrap_or("").into();
+                        }
+                        operations.push(result);
+                    }
+                }
+                if action.state == "Failed" {
+                    failed_tools.push(json!({"tool":action.title,"error":action.detail}));
+                }
+                println!("{}: {}", action.title, action.state);
+            }
+            Event::Final(text) => answer = text,
+            Event::Error(error) => errors.push(error),
+            Event::Finished => break,
+            _ => {}
+        }
+    }
+    cancel.store(true, Ordering::Relaxed);
+    worker
+        .join()
+        .map_err(|_| anyhow::anyhow!("Document task worker panicked"))?;
+    let original_preserved = format!("{:x}", Sha256::digest(fs::read(&original)?)) == original_hash
+        && format!(
+            "{:x}",
+            Sha256::digest(fs::read(project.join("CV_Template.docx"))?)
+        ) == original_hash;
+    let output = project.join("CV_Template_Refined.docx");
+    let output_hash = if output.is_file() {
+        format!("{:x}", Sha256::digest(fs::read(&output)?))
+    } else {
+        String::new()
+    };
+    let palette = operations.iter().any(|value| value.get("roles").is_some());
+    let palette_applied = operations
+        .iter()
+        .filter_map(|value| value["roles"].as_object())
+        .any(|roles| {
+            roles.values().any(|value| {
+                value
+                    .as_str()
+                    .is_some_and(|colour| colour.eq_ignore_ascii_case(&selected_accent))
+            })
+        });
+    let contrast = operations.iter().any(|value| {
+        value["AA_normal"] == true
+            && ((value["foreground"]
+                .as_str()
+                .is_some_and(|colour| colour.eq_ignore_ascii_case(&selected_accent))
+                && value["background"] == "#FFFFFF")
+                || (value["background"]
+                    .as_str()
+                    .is_some_and(|colour| colour.eq_ignore_ascii_case(&selected_accent))
+                    && value["foreground"] == "#FFFFFF"))
+    });
+    let content = operations
+        .iter()
+        .any(|value| value["operation"] == "format_document" && value["content_preserved"] == true);
+    let render = project.join("review-cv/review.json").is_file();
+    let passed = loaded.len() == 2
+        && palette
+        && palette_applied
+        && contrast
+        && content
+        && original_preserved
+        && !output_hash.is_empty()
+        && output_hash != original_hash
+        && render
+        && errors.is_empty()
+        && denied == 0
+        && !answer.starts_with("Task incomplete")
+        && !answer.starts_with("Paused:");
+    let report = json!({"passed":passed,"model":model,"skills_loaded":loaded,"palette_executed":palette,"palette_accent_applied":palette_applied,"contrast_executed":contrast,"formatting_content_preserved":content,"original_preserved":original_preserved,"source_sha256":original_hash,"output_sha256":output_hash,"rendered":render,"accent":selected_accent,"explicit_approvals":approvals,"unexpected_actions_denied":denied,"denied_design_requests":denied_design_requests,"failed_tools":failed_tools,"errors":errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"visual_review":"PENDING"});
+    fs::write(
+        root.join("report.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    fs::write(root.join("agent-response.txt"), answer)?;
+    println!("{report}\nDocument task directory: {}", root.display());
+    ensure!(
+        passed,
+        "Local document task did not meet its acceptance criteria; inspect the private report"
+    );
+    Ok(())
+}
+
+/// Explicit synthetic operator fixture. Only exact predeclared design requests
+/// receive approval; model text cannot expand the allowlist or grant permissions.
+pub fn creative_live_check(model: &str, project: &str, protocol: &str) -> Result<()> {
+    ensure!(matches!(protocol, "native" | "json"), "Use native or json");
+    let workspace = Workspace::new(project)?;
+    let suffix = format!("live-{protocol}");
+    let allowed = vec![
+        json!({"operation":"palette","seed":"#087F83","mode":"analogous","theme":"light"}),
+        json!({"operation":"compose_v2","input":"business-proposal.docx.json","output":format!("{suffix}.docx")}),
+        json!({"operation":"compose_v2","input":"business-presentation.pptx.json","output":format!("{suffix}.pptx")}),
+        json!({"operation":"svg_compose","input":"event-poster.json","output":format!("{suffix}-poster.png"),"assets":["original-landscape.jpg"]}),
+        json!({"operation":"svg_compose","input":"business-card.json","output":format!("{suffix}-card.svg"),"assets":["original-landscape.jpg"]}),
+        json!({"operation":"scene_repair_plan","input":"feedback-request.json"}),
+    ];
+    let request = format!(
+        "Work only in this synthetic acceptance project. Create a professional business proposal in Word from business-proposal.docx.json and a presentation from business-presentation.pptx.json, using compose_v2. Create an accessible corporate palette from #087F83, analogous, light. Create an event poster from event-poster.json with approved original-landscape.jpg and a business card from business-card.json using the same image. Propose contrast/layout corrections from feedback-request.json using scene_repair_plan. Load the matching skills first. Output names MUST be {suffix}.docx, {suffix}.pptx, {suffix}-poster.png, {suffix}-card.svg. Preserve every source. Use only read tools, skill tools and the six design operations described. No shell, internet, memory writes, workflows, other file changes or vision inference in this reasoning run. Report the provenance supplied by the actual broker and any failures. Visual acceptance remains pending until separately inspected."
+    );
+    let settings = Settings {
+        model: model.into(),
+        protocol: protocol.into(),
+        max_steps: 28,
+        task_minutes: 8,
+        web_enabled: false,
+        ..Default::default()
+    };
+    let (tx, rx) = mpsc::channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = cancel.clone();
+    let path = workspace.root.to_string_lossy().into_owned();
+    let started = Instant::now();
+    let worker = std::thread::spawn(move || {
+        agent::run(
+            settings,
+            path,
+            vec![ChatEntry {
+                role: "user".into(),
+                content: request,
+                ..Default::default()
+            }],
+            tx,
+            stop,
+            eframe::egui::Context::default(),
+        )
+    });
+    let (mut approvals, mut denied) = (0, 0);
+    let mut completed = Vec::new();
+    let mut failures = Vec::new();
+    let mut errors = Vec::new();
+    let mut answer = String::new();
+    while let Ok(event) = rx.recv_timeout(Duration::from_secs(180)) {
+        match event {
+            Event::Approval(action) => {
+                let allow = if let Proposal::Design { plan } = &action.proposal {
+                    let mut request = serde_json::to_value(&plan.request)?;
+                    request.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+                    allowed.contains(&request)
+                } else {
+                    false
+                };
+                if allow {
+                    approvals += 1;
+                } else {
+                    denied += 1;
+                }
+                action.reply.send(allow.into())?;
+            }
+            Event::Activity(action) => {
+                if action.state == "Complete" && crate::design_tools::is_tool(&action.title) {
+                    completed.push(json!({"tool":action.title,"detail":action.detail}));
+                } else if action.state == "Failed" {
+                    failures.push(json!({"tool":action.title,"detail":action.detail}));
+                }
+                println!("{}: {}", action.title, action.state);
+            }
+            Event::Final(text) => answer = text,
+            Event::Error(error) => errors.push(error),
+            Event::Finished => break,
+            _ => {}
+        }
+    }
+    cancel.store(true, Ordering::Relaxed);
+    worker
+        .join()
+        .map_err(|_| anyhow::anyhow!("Creative live worker panicked"))?;
+    let artifacts = [
+        format!("{suffix}.docx"),
+        format!("{suffix}.pptx"),
+        format!("{suffix}-poster.png"),
+        format!("{suffix}-card.svg"),
+    ]
+    .iter()
+    .all(|p| workspace.root.join(p).is_file());
+    let passed = errors.is_empty()
+        && failures.is_empty()
+        && denied == 0
+        && completed.len() == 6
+        && artifacts
+        && !answer.is_empty();
+    let report = json!({"passed":passed,"model":model,"protocol":protocol,"approvals":approvals,"denied":denied,"completed":completed,"failed_tools":failures,"errors":errors,"answer":answer,"artifacts_present":artifacts,"seconds":started.elapsed().as_secs_f64()});
+    fs::write(
+        workspace.root.join(format!("{suffix}-report.json")),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("Live creative {protocol}: passed={passed}, approvals={approvals}, denied={denied}");
+    ensure!(
+        passed,
+        "Live creative run incomplete; inspect retained report"
     );
     Ok(())
 }

@@ -45,6 +45,8 @@ pub struct Request {
     pub amount: Option<u16>,
     pub assets: Option<Vec<String>>,
     pub model: Option<String>,
+    pub preset: Option<String>,
+    pub accent: Option<String>,
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -55,6 +57,35 @@ pub struct Plan {
     pub asset_hashes: Vec<String>,
     pub vision_endpoint: Option<String>,
     pub workspace: PathBuf,
+}
+pub fn operation(tool: &str) -> Option<&'static str> {
+    match tool {
+        "colour_palette" => Some("palette"),
+        "colour_contrast" => Some("contrast"),
+        "colour_extract" => Some("extract"),
+        "inspect_document" => Some("inspect_document"),
+        "format_document" => Some("format_document"),
+        "render_document" => Some("render"),
+        "compose_document" => Some("compose"),
+        _ => None,
+    }
+}
+pub fn is_tool(tool: &str) -> bool {
+    tool == "design_tool" || operation(tool).is_some()
+}
+pub fn prepare_named(workspace: &Workspace, tool: &str, args: &Value) -> Result<Plan> {
+    let mut args = args.clone();
+    if let Some(operation) = operation(tool) {
+        let object = args
+            .as_object_mut()
+            .context("Tool arguments must be an object")?;
+        ensure!(
+            !object.contains_key("operation"),
+            "Use only the documented arguments for {tool}; operation is implied by its tool name"
+        );
+        object.insert("operation".into(), json!(operation));
+    }
+    prepare(workspace, &args)
 }
 fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -149,7 +180,7 @@ pub fn integration_note(id: &str) -> &'static str {
     } else if id == "professional-document-design-v2" {
         "\nUse design_tool compose_v2 with reviewed JSON and a new DOCX/PPTX path. Use render separately for structural checks and PNG review. Do not run scripts via shell. Visual review remains pending."
     } else if ["colour-intelligence", "professional-document-design"].contains(&id) {
-        "\nDesktop integration: use the registered design_tool with operation palette/contrast/extract for colour-intelligence or compose/render for professional-document-design. Do not use arbitrary shell commands to run these scripts. Outputs must be new project-relative paths. Rendering produces visual_review PENDING; inspect every PNG before claiming visual acceptance. Tool execution requires independent action review."
+        "\nDesktop integration: use colour_palette(seed,mode,theme), colour_contrast(foreground,background), colour_extract(input,count); inspect_document(input), format_document(input,output,accent,preset=cv), compose_document(input,output), render_document(input,output). These are separate tool names; do not pass an operation argument to them. For EXISTING DOCX use inspect_document then format_document, NOT compose_document. Only pass the documented arguments, never the whole palette object. render_document creates a review DIRECTORY, not a DOCX. Its output argument is required, for example review-cv. Use new project-relative outputs. Do not use shell commands to run these scripts. Visual review remains PENDING until every PNG is inspected. Each execution requires review."
     } else {
         ""
     }
@@ -198,7 +229,16 @@ impl Request {
     fn validate(&self, workspace: &Workspace) -> Result<()> {
         let operation = self.operation.as_str();
         ensure!(
-            ["palette", "contrast", "extract", "compose", "render"].contains(&operation)
+            [
+                "inspect_document",
+                "format_document",
+                "palette",
+                "contrast",
+                "extract",
+                "compose",
+                "render"
+            ]
+            .contains(&operation)
                 || ADVANCED_COLOUR.contains(&operation)
                 || operation == "compose_v2"
                 || ["type_scale", "measure_text"].contains(&operation)
@@ -229,6 +269,8 @@ impl Request {
             "layout_grid" | "layout_check" | "layout_arrange" => &["input"],
             "type_scale" => &["mode", "size"],
             "measure_text" => &["font", "sample", "size", "width"],
+            "inspect_document" => &["input"],
+            "format_document" => &["input", "output", "preset", "accent"],
             _ => &["input", "output"],
         };
         for (key, value) in value.as_object().unwrap() {
@@ -390,6 +432,15 @@ impl Request {
                 "Image mode must be contain or cover"
             );
         }
+        if operation == "format_document" {
+            ensure!(
+                self.preset.as_deref().unwrap_or("cv") == "cv",
+                "Only the cv formatting preset is supported"
+            );
+            if let Some(accent) = self.accent.as_deref() {
+                colour(Some(accent))?;
+            }
+        }
         if operation == "extract" {
             ensure!(
                 (2..=16).contains(&self.count.unwrap_or(6)),
@@ -413,6 +464,8 @@ impl Request {
             "creative_plan",
             "vision_inspect",
             "scene_repair_plan",
+            "inspect_document",
+            "format_document",
         ]
         .contains(&operation)
         {
@@ -430,6 +483,7 @@ impl Request {
                 | "scene_repair_plan" => &["json"],
                 "extract" | "image_inspect" | "image_prepare" | "image_adjust"
                 | "vision_inspect" => &["png", "jpg", "jpeg", "webp"],
+                "inspect_document" | "format_document" => &["docx"],
                 _ => &["docx", "pptx"],
             };
             ensure!(
@@ -439,6 +493,7 @@ impl Request {
         }
         if [
             "compose",
+            "format_document",
             "compose_v2",
             "render",
             "svg_compose",
@@ -462,6 +517,24 @@ impl Request {
                 !path.exists() && path.parent().is_some_and(Path::is_dir),
                 "Output must be new and its parent must exist"
             );
+            if operation == "render" {
+                let suffix = path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                ensure!(
+                    !["docx", "pptx", "pdf", "png", "doc", "ppt"].contains(&suffix.as_str()),
+                    "Render creates a REVIEW DIRECTORY, not an edited document. Use output review-cv; use format_document to produce a new DOCX."
+                );
+            }
+            if operation == "format_document" {
+                ensure!(
+                    path.extension()
+                        .is_some_and(|value| value.eq_ignore_ascii_case("docx")),
+                    "Formatting output must be DOCX"
+                );
+            }
             if matches!(operation, "image_prepare" | "image_adjust") {
                 ensure!(
                     matches!(
@@ -682,13 +755,14 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     )?;
     ensure!(payload.len() <= 100_000, "Adapter payload exceeds limit");
     let mut command = Command::new(&plan.runtime.python);
+    // The embedded worker now exceeds Windows' 32,767-character command-line
+    // limit. Stage the exact compiled-in bytes privately rather than pass -c.
+    // This is fixed application code, never a skill-supplied executable path.
+    let worker = scratch.path().join("design_worker.py");
+    fs::write(&worker, include_bytes!("../scripts/design_runner.py"))?;
     command
-        .args([
-            "-I",
-            "-B",
-            "-c",
-            include_str!("../scripts/design_runner.py"),
-        ])
+        .args(["-I", "-B"])
+        .arg(&worker)
         .current_dir(scratch.path())
         .env_clear()
         .stdin(Stdio::piped())
@@ -765,7 +839,12 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         let destination = workspace.resolve(output, true)?;
         if matches!(
             plan.request.operation.as_str(),
-            "compose" | "compose_v2" | "svg_compose" | "image_prepare" | "image_adjust"
+            "format_document"
+                | "compose"
+                | "compose_v2"
+                | "svg_compose"
+                | "image_prepare"
+                | "image_adjust"
         ) {
             let suffix = Path::new(output)
                 .extension()
@@ -786,7 +865,12 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
             file.write_all(&bytes)?;
             file.as_file().sync_all()?;
             workspace.resolve(output, true)?;
-            file.persist_noclobber(destination)?;
+            file.persist_noclobber(&destination)?;
+            ensure!(
+                sha(&bounded(&destination, 16 * 1024 * 1024)?)
+                    == result["sha256"].as_str().unwrap_or(""),
+                "Published artifact failed read-back verification"
+            );
         } else {
             let staged =
                 tempfile::tempdir_in(destination.parent().context("Missing review parent")?)?;
@@ -857,6 +941,18 @@ mod tests {
             );
         }
         fs::write(directory.path().join("input.json"), "{}").unwrap();
+        fs::write(directory.path().join("input.docx"), "fixture").unwrap();
+        let misleading: Request = serde_json::from_value(
+            json!({"operation":"render","input":"input.docx","output":"finished.docx"}),
+        )
+        .unwrap();
+        assert!(
+            misleading
+                .validate(&ws)
+                .unwrap_err()
+                .to_string()
+                .contains("DIRECTORY")
+        );
         fs::write(directory.path().join("out.docx"), "keep").unwrap();
         let request: Request = serde_json::from_value(
             json!({"operation":"compose","input":"input.json","output":"out.docx"}),

@@ -470,6 +470,70 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(UnidentifiedImageError):
             runner.run({'script': '', 'args': {'operation': 'extract'}})
 
+    def test_extract_rejects_animated_image(self):
+        from PIL import Image
+        frames = [Image.new('RGB', (20, 20), colour) for colour in ('red', 'blue')]
+        frames[0].save('input', format='PNG', save_all=True, append_images=frames[1:], duration=100)
+        with self.assertRaisesRegex(ValueError, 'animated'):
+            runner.run({'script': 'def extract(path, count): return []',
+                        'args': {'operation': 'extract', 'count': 2}})
+
+    def test_embedded_image_pixels_survive_svg_png_and_pdf(self):
+        import fitz
+        import xml.etree.ElementTree as ET
+        from PIL import Image
+        Image.new('RGB', (40, 40), '#D14936').save('asset-0', format='PNG')
+        scene = {'width': 200, 'height': 200, 'elements': [
+            {'id': 'image', 'kind': 'image', 'x': 20, 'y': 20, 'w': 100, 'h': 100,
+             'asset': 0, 'fit': 'contain'}]}
+        Path('input').write_text(json.dumps(scene))
+        for suffix in ('svg', 'png', 'pdf'):
+            runner.run({'args': {'operation': 'svg_compose', 'output': 'out.' + suffix, 'asset_count': 1}})
+        svg = Path('artifact.svg').read_text()
+        self.assertIn('xmlns:xlink=', svg)
+        node = ET.fromstring(svg).find('{http://www.w3.org/2000/svg}image')
+        self.assertTrue(node.get('{http://www.w3.org/1999/xlink}href').startswith('data:image/png;base64,'))
+        with Image.open('artifact.png') as image:
+            self.assertEqual(image.getpixel((100, 100))[:3], (209, 73, 54))
+        with fitz.open('artifact.pdf') as pdf:
+            self.assertEqual(pdf[0].get_pixmap().pixel(50, 50), (209, 73, 54))
+
+    def test_existing_cv_formatting_preserves_all_text_and_opaque_parts(self):
+        from docx import Document
+        from lxml import etree
+        document=Document()
+        document.add_paragraph('CV template', 'Title')
+        document.add_heading('Experience',1)
+        document.add_paragraph('[Job Title] | [Company] | [Year]')
+        document.add_paragraph('- Preserve every placeholder and word')
+        document.add_table(rows=1,cols=1).cell(0,0).text='Table source'
+        document.sections[0].header.paragraphs[0].text='Preserved header'
+        document.save('input')
+        inspected=runner.run({'args':{'operation':'inspect_document','input':'cv.docx'}})
+        self.assertEqual(inspected['paragraph_count'],4)
+        self.assertEqual(inspected['tables'],[[['Table source']]])
+        result=runner.run({'args':{'operation':'format_document','input':'cv.docx','output':'new.docx','preset':'cv','accent':'#007B7F'}})
+        self.assertTrue(result['content_preserved'])
+        self.assertNotEqual(result['sha256'],result['source_sha256'])
+        self.assertEqual(result['visual_review'],'PENDING')
+        with zipfile.ZipFile('input') as before,zipfile.ZipFile('artifact.docx') as after:
+            self.assertEqual(before.namelist(),after.namelist())
+            for name in before.namelist():
+                if name not in ['word/document.xml','word/styles.xml']:
+                    self.assertEqual(before.read(name),after.read(name))
+            ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            original=etree.fromstring(before.read('word/document.xml'))
+            formatted=etree.fromstring(after.read('word/document.xml'))
+            self.assertEqual(original.xpath('//w:t/text()',namespaces=ns),formatted.xpath('//w:t/text()',namespaces=ns))
+            self.assertIn('007B7F',after.read('word/document.xml').decode())
+
+    def test_existing_cv_rejects_unreadable_accent(self):
+        from docx import Document
+        Document().save('input')
+        with self.assertRaisesRegex(ValueError,'4.5:1'):
+            runner.run({'args':{'operation':'format_document','input':'cv.docx','output':'new.docx','accent':'#FFFFFF'}})
+        self.assertFalse(Path('artifact.docx').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

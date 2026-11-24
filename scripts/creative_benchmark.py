@@ -83,7 +83,7 @@ def run_case(name, brief, directory):
                 sx,sy=png.width/scene['width'],png.height/scene['height']
                 crop=png.convert('RGB').crop((int(box['x']*sx),int(box['y']*sy),int((box['x']+box['w'])*sx),int((box['y']+box['h'])*sy)))
                 sample=crop.resize((32,32))
-                require(any(r>130 and r>g*1.3 and r>b*1.3 for r,g,b in sample.getdata()),'Embedded image red region missing')
+                require(any(r>130 and r>g*1.3 and r>b*1.3 for r,g,b in sample.get_flattened_data()),'Embedded image red region missing')
         if name=='contrast-repair':
             require(bool(plan['colour_repairs']),'Expected contrast correction absent')
         return {'case':name,'status':'PASS','selected':plan['selected'],'hashes':hashes,

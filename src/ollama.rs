@@ -66,7 +66,7 @@ pub fn models(endpoint: &str) -> Result<Vec<String>> {
 }
 
 pub fn action_schema() -> Value {
-    let mut schema = json!({"type":"object","properties":{"kind":{"type":"string","enum":["tool","final"]},"message":{"type":"string"},"tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},"args":{"type":"object","additionalProperties":false}},"required":["kind","message","tool","args"],"additionalProperties":false});
+    let mut schema = json!({"type":"object","properties":{"kind":{"type":"string","enum":["tool","final"]},"message":{"type":"string"},"tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","colour_palette","colour_contrast","colour_extract","inspect_document","format_document","render_document","compose_document","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},"args":{"type":"object","additionalProperties":false}},"required":["kind","message","tool","args"],"additionalProperties":false});
     let mut properties = serde_json::Map::new();
     properties.insert("path".into(), json!({"type":"string"}));
     properties.insert("query".into(), json!({"type":"string"}));
@@ -106,6 +106,8 @@ pub fn action_schema() -> Value {
         "assets".into(),
         json!({"type":"array","items":{"type":"string"},"maxItems":4}),
     );
+    properties.insert("preset".into(), json!({"type":"string"}));
+    properties.insert("accent".into(), json!({"type":"string"}));
     schema["properties"]["args"]["properties"] = Value::Object(properties);
     schema
 }
@@ -147,8 +149,10 @@ pub fn native_mode(settings: &Settings) -> Result<bool> {
 
 fn design_properties() -> Value {
     let mut properties = serde_json::Map::new();
+    properties.insert("preset".into(), json!({"type":"string"}));
+    properties.insert("accent".into(), json!({"type":"string"}));
     properties.insert("model".into(), json!({"type":"string"}));
-    properties.insert("operation".into(), json!({"type":"string","enum":["palette","contrast","extract","compose","render","repair","gradient","categorical","simulate","system","distance","compose_v2","type_scale","measure_text","layout_grid","layout_check","layout_arrange","svg_compose","image_inspect","image_prepare","image_adjust","template_plan","scene_check","creative_plan","vision_inspect","scene_repair_plan"]}));
+    properties.insert("operation".into(), json!({"type":"string","enum":["palette","contrast","extract","compose","render","repair","gradient","categorical","simulate","system","distance","compose_v2","type_scale","measure_text","layout_grid","layout_check","layout_arrange","svg_compose","image_inspect","image_prepare","image_adjust","template_plan","scene_check","creative_plan","vision_inspect","scene_repair_plan","inspect_document","format_document"]}));
     properties.insert("seed".into(), json!({"type":"string"}));
     properties.insert("mode".into(), json!({"type":"string"}));
     properties.insert("theme".into(), json!({"type":"string"}));
@@ -189,6 +193,48 @@ fn tool_definitions(settings: &Settings) -> Value {
             "Run a reviewed local design adapter. Operations: scene_repair_plan(input JSON containing scene and review) requires scene-repair; returns advisory object matches and bounded candidate. Vision: vision_inspect(input raster,model installed local vision model,mode describe/design_review/document_review/slide_review/extract) requires vision-intelligence. Creative: creative_plan(input brief JSON) requires creative-director, returns ranked scene candidates. Templates: template_plan(input JSON), scene_check(input JSON) require creative-templates. Image: image_inspect(input raster), image_prepare(input raster,output PNG/JPEG/WebP,width,height in pixels,mode contain/cover), image_adjust(input,output,mode,optional amount percent) require image-intelligence. Layout: layout_grid(input JSON), layout_check(input JSON), layout_arrange(input JSON) require layout-intelligence. svg_compose(input JSON,output SVG/PNG/PDF, optional assets array of local raster paths; image objects refer to zero-based asset index) requires vector-graphics. Typography: type_scale(mode: document/presentation,size), measure_text(font,sample,size,width in points) require typography-intelligence. Other operations: repair(foreground,background), gradient(foreground,background,count), categorical(seed,count), simulate(seed,mode: protan/deutan/tritan), system(seed,theme), distance(foreground,background) require colour-intelligence-v2. V1 operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), compose_v2(input JSON with design_system,output DOCX/PPTX; requires professional-document-design-v2), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
             design_properties(),
             vec!["operation"],
+        ),
+        (
+            "colour_palette",
+            "Use Colour Intelligence to generate role colours and contrast checks. Load colour-intelligence first.",
+            json!({"seed":{"type":"string","description":"Six-digit seed colour #RRGGBB"},"mode":{"type":"string","enum":["analogous","monochromatic","complementary","split-complementary","triadic","tetradic","square"]},"theme":{"type":"string","enum":["light","dark"]}}),
+            vec!["seed"],
+        ),
+        (
+            "colour_contrast",
+            "Audit a foreground/background sRGB pair. Use this to check the chosen CV heading accent against white.",
+            json!({"foreground":{"type":"string"},"background":{"type":"string"}}),
+            vec!["foreground", "background"],
+        ),
+        (
+            "colour_extract",
+            "Extract dominant colours from an authorized project image PNG/JPEG/WebP.",
+            json!({"input":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":16}}),
+            vec!["input"],
+        ),
+        (
+            "inspect_document",
+            "Read actual body text, heading styles and tables from an EXISTING DOCX. Use instead of read_file for Word documents. Requires review.",
+            json!({"input":{"type":"string","description":"Existing project-relative DOCX file, for example CV_Template.docx"}}),
+            vec!["input"],
+        ),
+        (
+            "format_document",
+            "Improve formatting of an EXISTING DOCX while preserving every word, placeholder and other package parts. Load professional-document-design and use a colour_palette accent. Creates a real new DOCX, never overwrites. Requires review. Then render_document for visual review.",
+            json!({"input":{"type":"string","description":"Existing DOCX"},"output":{"type":"string","description":"New DOCX filename, for example CV_Template_Refined.docx"},"accent":{"type":"string","description":"One #RRGGBB heading colour from colour_palette; do not pass the whole roles object"},"preset":{"type":"string","enum":["cv"]}}),
+            vec!["input", "output", "accent"],
+        ),
+        (
+            "render_document",
+            "Render an existing DOCX/PPTX to images for review. This DOES NOT EDIT the document. Output is a NEW REVIEW DIRECTORY, never a .docx filename. You cannot claim visual review from render success alone.",
+            json!({"input":{"type":"string","description":"Existing DOCX/PPTX file"},"output":{"type":"string","description":"Required new review directory, for example review-cv; do not use a .docx extension"}}),
+            vec!["input", "output"],
+        ),
+        (
+            "compose_document",
+            "Create a NEW editable DOCX/PPTX from the baseline JSON content contract. For an existing Word CV use format_document instead. Requires review.",
+            json!({"input":{"type":"string","description":"Existing input JSON file"},"output":{"type":"string","description":"New DOCX/PPTX file"}}),
+            vec!["input", "output"],
         ),
         (
             "research_sources",
@@ -348,9 +394,9 @@ fn tool_definitions(settings: &Settings) -> Value {
         ),
     ];
     Value::Array(definitions.into_iter().filter(|(name,..)| {
-        (!settings.read_only || !["write_file","edit_file","run_command","design_tool","remember_project","mcp_tools","mcp_call","index_knowledge","workflow_start","workflow_advance","workflow_finish"].contains(name))
+        (!settings.read_only || crate::policy::classify(name).is_ok_and(|capability|capability==crate::policy::Capability::Read))
             && (settings.web_enabled || !name.starts_with("web_"))
-    }).map(|(name,description,properties,required)|json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required}}})).collect())
+    }).map(|(name,description,properties,required)|json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}})).collect())
 }
 
 pub fn next_turn(
@@ -581,6 +627,36 @@ pub fn compact(messages: &mut Vec<Value>, limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn document_functions_require_clear_inputs_and_are_hidden_when_readonly() {
+        let definitions = tool_definitions(&Settings::default());
+        for name in ["format_document", "render_document"] {
+            let function = &definitions
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|value| value["function"]["name"] == name)
+                .unwrap()["function"];
+            assert!(
+                function["parameters"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("input"))
+            );
+            assert!(
+                function["parameters"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("output"))
+            );
+        }
+        let readonly = tool_definitions(&Settings {
+            read_only: true,
+            ..Default::default()
+        });
+        assert!(!readonly.to_string().contains("format_document"));
+        assert!(!readonly.to_string().contains("colour_palette"));
+    }
     #[test]
     fn remote_model_endpoints_are_rejected() {
         for s in [

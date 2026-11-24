@@ -1130,6 +1130,91 @@ def scene_repair_plan(data):
             'limitation':'Visual regions are advisory, not proof of object identity. Supplied hash links establish consistency only, not authenticity. No automatic execution. Only deterministic contrast and text overflow repairs are proposed.'}
 
 
+def format_existing(source, output, accent):
+    """Patch only body/style XML. Preserve exact text and all opaque package parts."""
+    from lxml import etree
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    ns = {'w': W}
+    tag = lambda name: '{' + W + '}' + name
+    def child(parent, name, **attributes):
+        element = parent.find(tag(name))
+        if element is None:
+            element = etree.SubElement(parent, tag(name))
+        for key, value in attributes.items():
+            element.set(tag(key), str(value))
+        return element
+    def font(properties, size, colour, bold=None):
+        child(properties, 'rFonts', ascii='Arial', hAnsi='Arial', cs='Arial', eastAsia='Arial')
+        child(properties, 'sz', val=size); child(properties, 'szCs', val=size)
+        color = child(properties, 'color', val=colour)
+        for key in ['themeColor', 'themeTint', 'themeShade']:
+            color.attrib.pop(tag(key), None)
+        if bold is not None:
+            child(properties, 'b', val='1' if bold else '0')
+    def all_text(data):
+        root = etree.fromstring(data)
+        return tuple((element.tag, element.text or '') for element in root.iter() if element.tag in [tag('t'), tag('instrText')])
+    rgb = [int(accent[i:i+2], 16)/255 for i in (1,3,5)]
+    luminance = sum(weight * (channel/12.92 if channel <= .04045 else ((channel+.055)/1.055)**2.4) for weight,channel in zip((.2126,.7152,.0722), rgb))
+    ratio = 1.05/(luminance+.05)
+    if ratio < 4.5:
+        raise ValueError('Heading accent needs at least 4.5:1 contrast against white')
+    with zipfile.ZipFile(source) as archive:
+        document = etree.fromstring(archive.read('word/document.xml'))
+        paragraphs = document.findall('.//w:body//w:p', ns)
+        substantial_cv = len(paragraphs) >= 45 and sum(len(''.join(p.itertext(tag('t')))) for p in paragraphs) > 2000
+        for paragraph in paragraphs:
+            value = ''.join(paragraph.itertext(tag('t')))
+            properties = paragraph.find(tag('pPr'))
+            if properties is None:
+                properties = etree.Element(tag('pPr')); paragraph.insert(0, properties)
+            style = properties.find(tag('pStyle'))
+            style_id = style.get(tag('val'), '') if style is not None else ''
+            title = style_id == 'Title'
+            heading = style_id.startswith('Heading')
+            bullet = value.lstrip().startswith(('- ', '\u2022 ')) or properties.find(tag('numPr')) is not None
+            role = ' | ' in value and len(value) < 135 and not value.startswith('Email:')
+            size = 48 if title else 24 if heading else 21
+            colour = '000000' if title else accent[1:] if heading else '263445'
+            child(properties, 'spacing', before=180 if heading else 0, after=80 if value.strip() else 0, line=250 if value.strip() else 80, lineRule='auto')
+            child(properties, 'widowControl', val='1')
+            child(properties, 'keepNext', val='1' if title or heading or role else '0')
+            # Give substantial CVs a deliberate section boundary instead of a
+            # short second page beginning midway through Projects.
+            if substantial_cv and heading and value.strip().casefold() == 'education':
+                child(properties, 'pageBreakBefore', val='1')
+            child(properties, 'ind', left=180 if bullet else 0, hanging=180 if bullet else 0, right=0)
+            for border in list(properties.findall(tag('pBdr'))):
+                properties.remove(border)
+            for run in paragraph.findall('.//w:r', ns):
+                rp = run.find(tag('rPr'))
+                if rp is None:
+                    rp = etree.Element(tag('rPr')); run.insert(0, rp)
+                font(rp, size, colour, True if title or heading or role else None)
+        for section in document.findall('.//w:sectPr', ns):
+            child(section, 'pgSz', w=11906, h=16838)
+            child(section, 'pgMar', top=1134, bottom=1134, left=1134, right=1134)
+        styles = etree.fromstring(archive.read('word/styles.xml'))
+        for style in styles.findall('w:style', ns):
+            name = style.get(tag('styleId'), '')
+            if name in ['Normal','Title','Subtitle','Heading1','Heading2','ListBullet']:
+                font(child(style, 'rPr'), 48 if name == 'Title' else 24 if name.startswith('Heading') else 21, '000000' if name == 'Title' else accent[1:] if name.startswith('Heading') else '263445')
+                for border in style.findall('w:pPr/w:pBdr', ns):
+                    border.getparent().remove(border)
+        changes = {'word/document.xml': etree.tostring(document, xml_declaration=True, encoding='UTF-8', standalone=True), 'word/styles.xml': etree.tostring(styles, xml_declaration=True, encoding='UTF-8', standalone=True)}
+        if all(archive.read(name) == data for name,data in changes.items()):
+            raise ValueError('No formatting change was produced')
+        if all_text(archive.read('word/document.xml')) != all_text(changes['word/document.xml']):
+            raise ValueError('Formatting changed source content')
+        with zipfile.ZipFile(output, 'w') as destination:
+            for item in archive.infolist():
+                destination.writestr(item, changes.get(item.filename, archive.read(item)))
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(output) as after:
+        if before.namelist() != after.namelist() or any(before.read(name) != after.read(name) for name in before.namelist() if name not in changes):
+            raise ValueError('Formatting changed an opaque package part')
+    return {'content_preserved': True, 'preserved_other_package_parts': True, 'accent': accent.upper(), 'accent_contrast_on_white': round(ratio,4), 'preset': 'cv'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
@@ -1193,6 +1278,26 @@ def run(request):
         if operation == 'system':
             return namespace['system'](args['seed'], args.get('theme', 'light'))
         return {'distance_oklab': namespace['distance'](args['foreground'], args['background'])}
+
+
+    if operation in ['inspect_document', 'format_document']:
+        source = Path('input')
+        validate_office(source)
+        if operation == 'inspect_document':
+            from docx import Document
+            document = Document(source)
+            paragraphs = [{'style':p.style.name,'text':p.text} for p in document.paragraphs]
+            tables = [[[cell.text for cell in row.cells] for row in table.rows] for table in document.tables]
+            result = {'operation':operation,'input':args['input'],'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'paragraphs':paragraphs,'tables':tables,'paragraph_count':len(paragraphs),'table_count':len(tables),'limitation':'Body paragraphs and tables only; images, textboxes, headers and footers remain preserved but are not described.'}
+            if len(json.dumps(result).encode()) > 30000:
+                raise ValueError('Document inspection exceeds text limit; narrow the document')
+            return result
+        output = Path('artifact.docx')
+        result = format_existing(source, output, args.get('accent','#087F83'))
+        result.update({'operation':operation,'input':args['input'],'created':args['output'],'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),'visual_review':'PENDING'})
+        if result['source_sha256'] == result['sha256']:
+            raise ValueError('Formatting output is identical to source')
+        return result
     if operation in ['palette', 'contrast', 'extract']:
         exec(compile(request['script'], '<reviewed-colour-script>', 'exec'), namespace)
         if operation == 'palette':
@@ -1200,13 +1305,8 @@ def run(request):
         if operation == 'contrast':
             return namespace['audit'](args['foreground'], args['background'])
         from PIL import Image
-        Image.MAX_IMAGE_PIXELS = 16_000_000
-        warnings.simplefilter('error', Image.DecompressionBombWarning)
-        with Image.open('input', formats=['PNG', 'JPEG', 'WEBP']) as image:
-            if image.width * image.height > 16_000_000:
-                raise ValueError('Image exceeds pixel limit')
-            image.load()
-            image.save('validated.png')
+        image, _ = open_reviewed_image()
+        image.save('validated.png')
         return namespace['extract']('validated.png', args.get('count', 6))
     if operation == 'compose_v2':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))

@@ -14,6 +14,21 @@ fn main() -> anyhow::Result<()> {
         .nth(2)
         .unwrap_or_else(|| "qwen3.5:4b".into());
     match model.as_str() {
+        "--creative-live" => {
+            let project = raw.get(3).ok_or_else(|| {
+                anyhow::anyhow!("Provide model, fixture project and native/json protocol")
+            })?;
+            let protocol = raw.get(4).map(String::as_str).unwrap_or("native");
+            return vmt_local_agent::verification::creative_live_check(
+                &selected, project, protocol,
+            );
+        }
+        "--document-task" => {
+            let input = std::env::args()
+                .nth(3)
+                .ok_or_else(|| anyhow::anyhow!("Provide model and original DOCX path"))?;
+            return vmt_local_agent::verification::document_task_check(&selected, &input);
+        }
         "--design-live" => {
             let source = std::env::args()
                 .nth(3)

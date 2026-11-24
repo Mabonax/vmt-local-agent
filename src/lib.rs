@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod clipboard;
 pub mod design_tools;
 pub mod execution;
 pub mod knowledge;
@@ -13,6 +14,7 @@ pub mod skills;
 pub mod store;
 pub mod task_journal;
 pub mod task_permissions;
+pub mod task_verification;
 pub mod tools;
 pub mod types;
 pub mod verification;
