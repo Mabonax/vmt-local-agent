@@ -123,8 +123,8 @@ fn tool_definitions(settings: &Settings) -> Value {
     let definitions = [
         (
             "design_tool",
-            "Run a reviewed local design adapter. Operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
-            json!({"operation":{"type":"string","enum":["palette","contrast","extract","compose","render"]},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":16}}),
+            "Run a reviewed local design adapter. Operations: repair(foreground,background), gradient(foreground,background,count), categorical(seed,count), simulate(seed,mode: protan/deutan/tritan), system(seed,theme), distance(foreground,background) require colour-intelligence-v2. V1 operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
+            json!({"operation":{"type":"string","enum":["palette","contrast","extract","compose","render","repair","gradient","categorical","simulate","system","distance"]},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":64}}),
             vec!["operation"],
         ),
         (

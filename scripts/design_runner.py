@@ -96,6 +96,27 @@ def run(request):
     args = request['args']
     operation = args['operation']
     namespace = {'__name__': '_reviewed_design_skill'}
+    if operation in ['repair', 'gradient', 'categorical', 'simulate', 'system', 'distance']:
+        # Both sources are pinned to the same reviewed package by the broker.
+        # Execute the base in a private namespace; no sys.path or filesystem imports.
+        base = dict(namespace)
+        exec(compile(request['colour_base'], '<reviewed-colour-base>', 'exec'), base)
+        advanced = request['script']
+        if advanced.count('from colour import *') != 1:
+            raise ValueError('Unexpected advanced import contract')
+        namespace.update({k: v for k, v in base.items() if not k.startswith('_')})
+        exec(compile(advanced.replace('from colour import *', ''), '<reviewed-colour-v2>', 'exec'), namespace)
+        if operation == 'repair':
+            return namespace['repair'](args['foreground'], args['background'], 4.5)
+        if operation == 'gradient':
+            return namespace['gradient'](args['foreground'], args['background'], args.get('count', 7))
+        if operation == 'categorical':
+            return namespace['categorical'](args['seed'], args.get('count', 6))
+        if operation == 'simulate':
+            return namespace['simulate'](args['seed'], args['mode'])
+        if operation == 'system':
+            return namespace['system'](args['seed'], args.get('theme', 'light'))
+        return {'distance_oklab': namespace['distance'](args['foreground'], args['background'])}
     if operation in ['palette', 'contrast', 'extract']:
         exec(compile(request['script'], '<reviewed-colour-script>', 'exec'), namespace)
         if operation == 'palette':

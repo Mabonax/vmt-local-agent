@@ -14,8 +14,11 @@ ARCHIVES = {
 }
 
 
-def unpack(archives, destination):
-    for name, expected in ARCHIVES.items():
+COLOUR_V2 = {'colour-intelligence-v2': '20d4fad76e54bfb54643fb08c2273fb9b0ba544eb9da757a927f436ebc4ff381'}
+
+
+def unpack(archives, destination, manifest=None):
+    for name, expected in (ARCHIVES if manifest is None else manifest).items():
         archive = archives / (name + '.zip')
         if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
             raise ValueError('Archive differs from reviewed version: ' + name)
@@ -53,10 +56,13 @@ def main():
     parser.add_argument('--soffice', type=Path, required=True)
     parser.add_argument('--profile', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'VMT/LocalAgent')
     parser.add_argument('--install-dependencies', action='store_true', help='Explicitly permit pip downloads into the private venv')
+    parser.add_argument('--colour-v2', action='store_true', help='Install the reviewed advanced colour package alongside V1')
     args = parser.parse_args()
     profile = args.profile.absolute()
     packages = profile / 'skill-packages/design-2026-11-24'
     unpack(args.archives, packages)
+    if args.colour_v2:
+        unpack(args.archives, packages, COLOUR_V2)
     environment = profile / 'design-runtime/venv'
     python = environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     if args.install_dependencies:

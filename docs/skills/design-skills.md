@@ -144,3 +144,7 @@ Acceptance commands (synthetic fixtures only):
 Generated fixtures, executable paths, raw source bodies and local runtime settings
 remain outside Git. Local renderer/model acceptance does not certify arbitrary
 document sizes, all content/layouts, or hosted CI success.
+
+## V2 colour adapter increment
+
+The optional `--colour-v2` setup flag verifies the supplied `colour-intelligence-v2.zip` against SHA-256 `20d4fad76e54bfb54643fb08c2273fb9b0ba544eb9da757a927f436ebc4ff381` and installs it alongside both existing V1 packages. Use a separate profile for evaluation; existing V1 operation names are unchanged. The new operations are `repair` (fixed 4.5:1), `gradient` (2–64), `categorical` (2–12), `simulate` (protan/deutan/tritan), `system` (light/dark), and `distance` (Euclidean OKLab). All use the reviewed V2 package and the same per-action broker. The base and advanced scripts must share a fingerprint. No generic script execution is added. The V2 document package is not yet wired in; system colour tokens are not yet consumed by compose. CI dispatch fixtures are not evidence of real-package or live-model acceptance. The existing live V1 acceptance command expects exactly two skills; use the original V1-only profile for it.

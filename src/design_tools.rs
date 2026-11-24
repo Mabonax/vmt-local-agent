@@ -92,7 +92,7 @@ fn runtime() -> Result<Runtime> {
     Ok(runtime)
 }
 pub fn status(id: &str) -> &'static str {
-    if ["colour-intelligence", "professional-document-design"].contains(&id) {
+    if ["colour-intelligence", "colour-intelligence-v2", "professional-document-design"].contains(&id) {
         if store::data_dir().join("design-runtime.json").is_file() {
             "Reviewed design adapter configured · each execution requires approval"
         } else {
@@ -103,15 +103,21 @@ pub fn status(id: &str) -> &'static str {
     }
 }
 pub fn integration_note(id: &str) -> &'static str {
-    if ["colour-intelligence", "professional-document-design"].contains(&id) {
+    if id == "colour-intelligence-v2" {
+        "\nUse design_tool operations repair, gradient, categorical, simulate, system and distance. Do not execute skill scripts via shell. Each operation requires review. V1 palette/contrast/extract remain separate. Repair targets 4.5:1; simulation and distance do not certify accessibility."
+    } else if ["colour-intelligence", "professional-document-design"].contains(&id) {
         "\nDesktop integration: use the registered design_tool with operation palette/contrast/extract for colour-intelligence or compose/render for professional-document-design. Do not use arbitrary shell commands to run these scripts. Outputs must be new project-relative paths. Rendering produces visual_review PENDING; inspect every PNG before claiming visual acceptance. Tool execution requires independent action review."
     } else {
         ""
     }
 }
+const ADVANCED_COLOUR: &[&str] = &["repair", "gradient", "categorical", "simulate", "system", "distance"];
+
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ["palette", "contrast", "extract"].contains(&self.operation.as_str()) {
+        if ADVANCED_COLOUR.contains(&self.operation.as_str()) {
+            ("colour-intelligence-v2", "scripts/advanced.py")
+        } else if ["palette", "contrast", "extract"].contains(&self.operation.as_str()) {
             ("colour-intelligence", "scripts/colour.py")
         } else {
             ("professional-document-design", "scripts/compose.py")
@@ -120,7 +126,8 @@ impl Request {
     fn validate(&self, workspace: &Workspace) -> Result<()> {
         let operation = self.operation.as_str();
         ensure!(
-            ["palette", "contrast", "extract", "compose", "render"].contains(&operation),
+            ["palette", "contrast", "extract", "compose", "render"].contains(&operation)
+                || ADVANCED_COLOUR.contains(&operation),
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -128,6 +135,11 @@ impl Request {
             "palette" => &["seed", "mode", "theme"],
             "contrast" => &["foreground", "background"],
             "extract" => &["input", "count"],
+            "repair" | "distance" => &["foreground", "background"],
+            "gradient" => &["foreground", "background", "count"],
+            "categorical" => &["seed", "count"],
+            "simulate" => &["seed", "mode"],
+            "system" => &["seed", "theme"],
             _ => &["input", "output"],
         };
         for (key, value) in value.as_object().unwrap() {
@@ -166,9 +178,24 @@ impl Request {
                 "Unsupported theme"
             );
         }
-        if operation == "contrast" {
+        if ["contrast", "repair", "distance", "gradient"].contains(&operation) {
             colour(self.foreground.as_deref())?;
             colour(self.background.as_deref())?;
+        }
+        if ["categorical", "simulate", "system"].contains(&operation) {
+            colour(self.seed.as_deref())?;
+        }
+        if operation == "categorical" {
+            ensure!((2..=12).contains(&self.count.unwrap_or(6)), "Category count must be 2-12");
+        }
+        if operation == "gradient" {
+            ensure!((2..=64).contains(&self.count.unwrap_or(7)), "Gradient count must be 2-64");
+        }
+        if operation == "simulate" {
+            ensure!(matches!(self.mode.as_deref(), Some("protan" | "deutan" | "tritan")), "Unsupported simulation");
+        }
+        if operation == "system" {
+            ensure!(["light", "dark"].contains(&self.theme.as_deref().unwrap_or("light")), "Unsupported theme");
         }
         if operation == "extract" {
             ensure!(
@@ -299,6 +326,14 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         fingerprint == plan.fingerprint,
         "Skill changed after action review"
     );
+    let colour_base = if ADVANCED_COLOUR.contains(&plan.request.operation.as_str()) {
+        let (base, base_fingerprint) = Registry::load()?
+            .adapter_script("colour-intelligence-v2", "scripts/colour.py")?;
+        ensure!(base_fingerprint == plan.fingerprint, "Colour package changed after review");
+        Some(base)
+    } else {
+        None
+    };
     let input = plan.request.input_bytes(workspace)?;
     ensure!(
         input.as_ref().map(|data| sha(data)) == plan.input_sha256,
@@ -313,7 +348,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         .unwrap()
         .retain(|_, value| !value.is_null());
     let payload =
-        serde_json::to_vec(&json!({"script":script,"args":args,"soffice":plan.runtime.soffice}))?;
+        serde_json::to_vec(&json!({"script":script,"colour_base":colour_base,"args":args,"soffice":plan.runtime.soffice}))?;
     ensure!(payload.len() <= 100_000, "Adapter payload exceeds limit");
     let mut command = Command::new(&plan.runtime.python);
     command

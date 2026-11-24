@@ -60,6 +60,14 @@ class DesignRunnerTests(unittest.TestCase):
         runner.validate_office(Path('test.pptx'))
         self.assertEqual(Presentation('test.pptx').slides[0].shapes[0].text, 'Editable text')
 
+    def test_advanced_colour_dispatch(self):
+        base = 'def distance(a,b): return 0.0\n'
+        advanced = 'from colour import *\ndef system(a,b): return {"seed":a,"theme":b}\n'
+        result = runner.run({'colour_base': base, 'script': advanced, 'args': {'operation': 'system', 'seed': '#123456', 'theme': 'dark'}})
+        self.assertEqual(result, {'seed': '#123456', 'theme': 'dark'})
+        with self.assertRaises(ValueError):
+            runner.run({'colour_base': base, 'script': '', 'args': {'operation': 'system', 'seed': '#123456'}})
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
