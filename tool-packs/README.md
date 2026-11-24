@@ -45,3 +45,8 @@ Five tools generate, inspect, extract embedded text, select pages and merge smal
 
 ## Artifact quality V1
 Four deterministic tools inspect artifact containers, hash bytes, and check supplied rectangles for clipping or overlap. ZIP inspection checks CRC and required parts, not full OOXML validity or safety. PDF inspection checks parser readability. Geometry must be supplied by the host or renderer; intersections may be intentional and do not establish visual defects. No visual rendering, font measurement, or automatic correction is provided by this pack. Uses the existing PDF dependencies. Treat all binary parsing as an isolation boundary.
+
+## Artifact management V1
+ArtifactStore creates a new session directory under a host-selected private parent. ArtifactHost wraps the pure dispatcher, intercepts generated binary envelopes and exposes metadata and opaque IDs instead. PDF inspection, extraction, split and merge and artifact hashing/inspection accept references through this host interface. Version ancestry is optional and immutable per record. Store limits: 700000 bytes per artifact, 100 artifacts, 20 MiB per session; the underlying 1 MiB request limit still applies to merges. The host must manage session directory cleanup, permissions and lifecycle; the in-memory index is not restart-persistent. This is not an OS sandbox, malware scanner or authorization service. The host must keep raw dispatcher and retrieval APIs inaccessible to the model. No rendering yet.
+
+Run artifact integration tests: `python -B -m unittest discover -s tool-packs -p test_artifacts.py`.
