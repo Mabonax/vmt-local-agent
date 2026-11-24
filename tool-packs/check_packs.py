@@ -7,6 +7,9 @@ import unittest
 
 ROOT=pathlib.Path(__file__).resolve().parent
 EXAMPLES={
+ "office.docx":{"title":"Report","sections":[]},
+ "office.xlsx":{"headers":["Name"],"rows":[["Example"]]},
+ "office.pptx":{"title":"Deck","slides":[]},
  "project.detect":{"paths":["Cargo.toml"]},
  "code.metrics":{"text":"hello"},
  "code.dependencies":{"format":"npm","text":"{}"},
