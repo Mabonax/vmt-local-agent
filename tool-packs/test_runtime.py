@@ -6,7 +6,7 @@ import workspace_adapter as ws
 
 class RuntimeTests(unittest.TestCase):
     def test_registry(self):
-        self.assertEqual(len(dispatch.registry()),29)
+        self.assertEqual(len(dispatch.registry()),32)
     def test_dispatch(self):
         self.assertEqual(dispatch.dispatch("math.calculate",{"operation":"add","a":2,"b":3}),{"ok":True,"result":{"value":5}})
         with self.assertRaises(ValueError): dispatch.dispatch("math.calculate",{"operation":"add","a":True,"b":3})
