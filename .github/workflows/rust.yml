@@ -32,3 +32,12 @@ jobs:
           python -m pip install --only-binary=:all: -r scripts/design-requirements.txt
       - name: Validate design worker boundaries
         run: python -B scripts/test_design_runner.py -v
+      - name: Run creative artifact benchmarks
+        run: python -B scripts/creative_benchmark.py --output creative-benchmark-results
+      - name: Upload creative benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creative-benchmark-results
+          path: creative-benchmark-results/
+          if-no-files-found: ignore
