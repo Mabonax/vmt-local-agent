@@ -351,6 +351,34 @@ class DesignRunnerTests(unittest.TestCase):
                 self.assertEqual(strings,[brief['title'],brief['subtitle'],brief['footer']])
                 self.assertTrue(all(e['size']>=11 for e in candidate['scene']['elements'] if e['kind']=='text'))
 
+    def test_vision_rejects_remote_endpoint_before_io(self):
+        with self.assertRaises(ValueError):
+            runner.vision_inspect({'vision_endpoint':'http://example.invalid','model':'vision:latest','mode':'describe'})
+
+    def test_vision_local_transport_and_advisory_result(self):
+        from unittest.mock import patch, MagicMock
+        from PIL import Image
+        Image.new('RGB',(100,60),'red').save('input',format='PNG')
+        replies = [
+            {'models':[{'name':'vision:latest','digest':'fixture-digest'}]},
+            {'capabilities':['vision'],'details':{'format':'gguf'}},
+            {'done':True,'message':{'content':'Visible red rectangle.'}}
+        ]
+        conn = MagicMock()
+        response = MagicMock()
+        response.status = 200
+        response.read.side_effect = [json.dumps(r).encode() for r in replies]
+        conn.getresponse.return_value = response
+        with patch('http.client.HTTPConnection',return_value=conn) as transport:
+            result = runner.vision_inspect({'vision_endpoint':'http://127.0.0.1:11434','model':'vision:latest','mode':'describe'})
+        self.assertEqual(result['visual_review'],'ADVISORY_ONLY')
+        self.assertTrue(result['untrusted_model_output'])
+        self.assertEqual(transport.call_count,3)
+        payload = json.loads(conn.request.call_args.args[2])
+        self.assertEqual(payload['keep_alive'],0)
+        self.assertTrue(payload['messages'][1]['images'])
+        self.assertNotIn('tools',payload)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
