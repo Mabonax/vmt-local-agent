@@ -241,6 +241,36 @@ class DesignRunnerTests(unittest.TestCase):
             self.assertAlmostEqual(doc[0].rect.height,200)
             self.assertTrue(doc[0].get_drawings())
 
+    def test_image_inspect_and_prepare(self):
+        from PIL import Image
+        Image.new('RGBA',(100,50),(255,0,0,128)).save('input',format='PNG')
+        info = runner.run({'args':{'operation':'image_inspect'}})
+        self.assertEqual(info['width'],100)
+        self.assertTrue(info['has_transparency'])
+        args = {'operation':'image_prepare','output':'out.png','width':100,'height':100,'mode':'contain'}
+        result = runner.run({'args':args})
+        self.assertFalse(result['upscaled'])
+        with Image.open('artifact.png') as im:
+            self.assertEqual(im.size,(100,100))
+            self.assertEqual(im.getpixel((50,0))[3],0)
+            self.assertEqual(im.getpixel((50,50)),(255,0,0,128))
+        result = runner.run({'args':{**args,'mode':'cover','output':'out.jpg'}})
+        self.assertTrue(result['upscaled'])
+        with Image.open('artifact.jpg') as im:
+            self.assertEqual(im.mode,'RGB')
+            self.assertEqual(im.size,(100,100))
+
+    def test_image_prepare_rejects_invalid_inputs(self):
+        from PIL import Image
+        Image.new('RGB',(20,20)).save('input',format='TIFF')
+        with self.assertRaises(Exception):
+            runner.run({'args':{'operation':'image_inspect'}})
+        Image.new('RGB',(20,20)).save('input',format='PNG')
+        with self.assertRaises(ValueError):
+            runner.image_prepare({'width':5000,'height':100,'mode':'cover','output':'bad.png'})
+        with self.assertRaises(ValueError):
+            runner.image_prepare({'width':100,'height':100,'mode':'stretch','output':'bad.png'})
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

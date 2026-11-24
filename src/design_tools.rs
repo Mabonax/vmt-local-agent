@@ -41,6 +41,7 @@ pub struct Request {
     pub sample: Option<String>,
     pub size: Option<u8>,
     pub width: Option<u16>,
+    pub height: Option<u16>,
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -104,6 +105,7 @@ pub fn status(id: &str) -> &'static str {
         "typography-intelligence",
         "layout-intelligence",
         "vector-graphics",
+        "image-intelligence",
     ]
     .contains(&id)
     {
@@ -117,7 +119,9 @@ pub fn status(id: &str) -> &'static str {
     }
 }
 pub fn integration_note(id: &str) -> &'static str {
-    if id == "vector-graphics" {
+    if id == "image-intelligence" {
+        "\nUse design_tool image_inspect or image_prepare with a reviewed local raster image. Preparation preserves aspect ratio and never overwrites the source."
+    } else if id == "vector-graphics" {
         "\nUse design_tool svg_compose with a reviewed JSON scene and a new SVG, PNG or PDF output. Native shapes and text remain editable. No raw SVG markup or external resources."
     } else if id == "layout-intelligence" {
         "\nUse design_tool layout_grid or layout_check with a project-relative JSON input. Results use points and top-left coordinates. Geometry is not visual certification."
@@ -144,7 +148,9 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if self.operation == "svg_compose" {
+        if ["image_inspect", "image_prepare"].contains(&self.operation.as_str()) {
+            ("image-intelligence", "SKILL.md")
+        } else if self.operation == "svg_compose" {
             ("vector-graphics", "SKILL.md")
         } else if ["layout_grid", "layout_check", "layout_arrange"]
             .contains(&self.operation.as_str())
@@ -170,7 +176,8 @@ impl Request {
                 || operation == "compose_v2"
                 || ["type_scale", "measure_text"].contains(&operation)
                 || ["layout_grid", "layout_check", "layout_arrange"].contains(&operation)
-                || operation == "svg_compose",
+                || operation == "svg_compose"
+                || ["image_inspect", "image_prepare"].contains(&operation),
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -178,6 +185,8 @@ impl Request {
             "palette" => &["seed", "mode", "theme"],
             "contrast" => &["foreground", "background"],
             "extract" => &["input", "count"],
+            "image_inspect" => &["input"],
+            "image_prepare" => &["input", "output", "width", "height", "mode"],
             "repair" | "distance" => &["foreground", "background"],
             "gradient" => &["foreground", "background", "count"],
             "categorical" => &["seed", "count"],
@@ -281,6 +290,17 @@ impl Request {
                 "Unsupported point size or width"
             );
         }
+        if operation == "image_prepare" {
+            ensure!(
+                (16..=4096).contains(&self.width.unwrap_or(0))
+                    && (16..=4096).contains(&self.height.unwrap_or(0)),
+                "Image dimensions must be 16-4096 pixels"
+            );
+            ensure!(
+                matches!(self.mode.as_deref(), Some("contain" | "cover")),
+                "Image mode must be contain or cover"
+            );
+        }
         if operation == "extract" {
             ensure!(
                 (2..=16).contains(&self.count.unwrap_or(6)),
@@ -296,6 +316,8 @@ impl Request {
             "layout_check",
             "layout_arrange",
             "svg_compose",
+            "image_inspect",
+            "image_prepare",
         ]
         .contains(&operation)
         {
@@ -310,7 +332,7 @@ impl Request {
             let extensions: &[&str] = match operation {
                 "compose" | "compose_v2" | "layout_grid" | "layout_check" | "layout_arrange"
                 | "svg_compose" => &["json"],
-                "extract" => &["png", "jpg", "jpeg", "webp"],
+                "extract" | "image_inspect" | "image_prepare" => &["png", "jpg", "jpeg", "webp"],
                 _ => &["docx", "pptx"],
             };
             ensure!(
@@ -318,7 +340,7 @@ impl Request {
                 "Unsupported input format"
             );
         }
-        if ["compose", "compose_v2", "render", "svg_compose"].contains(&operation) {
+        if ["compose", "compose_v2", "render", "svg_compose", "image_prepare"].contains(&operation) {
             let output = self.output.as_deref().context("Output path is required")?;
             ensure!(
                 !output.is_empty()
@@ -334,6 +356,18 @@ impl Request {
                 !path.exists() && path.parent().is_some_and(Path::is_dir),
                 "Output must be new and its parent must exist"
             );
+            if operation == "image_prepare" {
+                ensure!(
+                    matches!(
+                        path.extension()
+                            .and_then(|v| v.to_str())
+                            .map(str::to_ascii_lowercase)
+                            .as_deref(),
+                        Some("png" | "jpg" | "jpeg" | "webp")
+                    ),
+                    "Output must be PNG, JPEG or WebP"
+                );
+            }
             if operation == "svg_compose" {
                 ensure!(
                     matches!(
@@ -553,7 +587,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         let destination = workspace.resolve(output, true)?;
         if matches!(
             plan.request.operation.as_str(),
-            "compose" | "compose_v2" | "svg_compose"
+            "compose" | "compose_v2" | "svg_compose" | "image_prepare"
         ) {
             let suffix = Path::new(output)
                 .extension()

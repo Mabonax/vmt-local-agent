@@ -572,9 +572,66 @@ def export_vector_scene(source, output, width, height):
     return result
 
 
+def open_reviewed_image():
+    from PIL import Image, ImageOps
+    Image.MAX_IMAGE_PIXELS = 16_000_000
+    warnings.simplefilter('error', Image.DecompressionBombWarning)
+    with Image.open('input', formats=['PNG','JPEG','WEBP']) as original:
+        if original.width * original.height > 16_000_000 or getattr(original,'n_frames',1) != 1:
+            raise ValueError('Image exceeds bounds or is animated')
+        original.load()
+        info = {'format':original.format,'original_width':original.width,'original_height':original.height,
+                'original_mode':original.mode,'has_icc_profile':bool(original.info.get('icc_profile'))}
+        oriented = ImageOps.exif_transpose(original)
+        rgba = oriented.convert('RGBA')
+        info.update({'width':rgba.width,'height':rgba.height,'aspect_ratio':round(rgba.width/rgba.height,6),
+                     'has_transparency':rgba.getchannel('A').getextrema()[0]<255,
+                     'megapixels':round(rgba.width*rgba.height/1_000_000,3),
+                     'source_sha256':hashlib.sha256(Path('input').read_bytes()).hexdigest()})
+        return rgba, info
+
+
+def image_prepare(args):
+    from PIL import Image, ImageOps
+    im, info = open_reviewed_image()
+    w,h = args['width'],args['height']
+    if type(w) is not int or type(h) is not int or not 16<=w<=4096 or not 16<=h<=4096 or w*h>16_000_000:
+        raise ValueError('Invalid target dimensions')
+    mode = args['mode']
+    if mode == 'contain':
+        resized = ImageOps.contain(im,(w,h),Image.Resampling.LANCZOS)
+        result = Image.new('RGBA',(w,h),(0,0,0,0))
+        result.paste(resized,((w-resized.width)//2,(h-resized.height)//2))
+        scale = min(w/im.width,h/im.height)
+    elif mode == 'cover':
+        result = ImageOps.fit(im,(w,h),Image.Resampling.LANCZOS,centering=(.5,.5))
+        scale = max(w/im.width,h/im.height)
+    else:
+        raise ValueError('Unsupported image mode')
+    suffix = Path(args['output']).suffix.lower()
+    if suffix not in ('.png','.jpg','.jpeg','.webp'):
+        raise ValueError('Unsupported output format')
+    output = Path('artifact'+suffix)
+    if suffix in ('.jpg','.jpeg'):
+        flattened = Image.new('RGB',result.size,'white')
+        flattened.paste(result,mask=result.getchannel('A'))
+        flattened.save(output,format='JPEG',quality=90)
+    else:
+        result.info.clear()
+        result.save(output,format='PNG' if suffix=='.png' else 'WEBP',**({'lossless':True} if suffix=='.webp' else {}))
+    return {'created':args['output'],'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),
+            'source':info,'width':w,'height':h,'mode':mode,'upscaled':scale>1,
+            'visual_review':'PENDING','limitation':'EXIF orientation applied; metadata stripped. No ICC colour conversion or aesthetic assessment.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation == 'image_inspect':
+        _, info = open_reviewed_image()
+        return info
+    if operation == 'image_prepare':
+        return image_prepare(args)
     if operation == 'svg_compose':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         source = Path('artifact.svg')
