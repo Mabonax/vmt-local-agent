@@ -41,6 +41,7 @@ def main():
         (root / f'palette-{theme}.json').write_text(json.dumps(palette, indent=2))
     image = Image.new('RGB', (120, 80), 'red'); image.paste('blue', (60, 0, 120, 80)); image.save(root / 'colours.png')
     extracted = call(operation='extract', input='colours.png', count=2)
+    extracted = extracted.get('result', extracted) if isinstance(extracted, dict) else extracted
     assert {item['hex'] for item in extracted} == {'#FF0000', '#0000FF'}
     data = {'title': 'Local design acceptance', 'subtitle': 'Editable outputs from the reviewed skill adapter', 'sections': [{'heading': 'Purpose and scope', 'paragraphs': ['Verify the local agent can create editable documents and presentations.'], 'bullets': ['Preserve the supplied source text', 'Render every page and slide']}, {'heading': 'Next steps', 'paragraphs': ['Inspect the rendered output before delivery.'], 'bullets': ['Check typography and spacing', 'Record the review result']}]}
     (root / 'content.json').write_text(json.dumps(data), encoding='utf-8')

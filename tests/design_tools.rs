@@ -137,4 +137,25 @@ fn design_actions_cannot_bypass_review_or_change_after_review() {
     } else {
         panic!()
     }
+    // Restore the reviewed package in this disposable fixture, then verify that
+    // executable drift blocks a previously prepared manifest-backed operation.
+    fs::write(
+        source.join("scripts/compose.py"),
+        "# Fixture never launched\n",
+    )
+    .unwrap();
+    fs::write(project.join("asset.png"), "reviewed bytes").unwrap();
+    let pinned = design_tools::prepare(&tools.workspace, &graphic).unwrap();
+    fs::write(&fake_executable, "changed executable").unwrap();
+    assert!(
+        design_tools::execute(&tools.workspace, &pinned, &cancel)
+            .unwrap_err()
+            .to_string()
+            .contains("runtime changed")
+    );
+    Registry::load()
+        .unwrap()
+        .set_enabled("vector-graphics", false)
+        .unwrap();
+    assert!(design_tools::prepare(&tools.workspace, &graphic).is_err());
 }

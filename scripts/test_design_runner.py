@@ -313,7 +313,11 @@ class DesignRunnerTests(unittest.TestCase):
         runner.svg_compose(scene,Path('approved.svg'),1)
         node = ET.parse('approved.svg').getroot().find('{http://www.w3.org/2000/svg}image')
         self.assertTrue(node.get('{http://www.w3.org/1999/xlink}href').startswith('data:image/png;base64,'))
-        self.assertEqual(node.get('opacity'),'0.8')
+        self.assertEqual(node.get('opacity'),'1')
+        import base64, io
+        data = node.get('{http://www.w3.org/1999/xlink}href').split(',', 1)[1]
+        with Image.open(io.BytesIO(base64.b64decode(data))) as embedded:
+            self.assertEqual(embedded.getchannel('A').getextrema(), (0, 204))
         scene['elements'][0]['asset'] = '../secret.png'
         with self.assertRaises(ValueError):
             runner.svg_compose(scene,Path('bad.svg'),1)
@@ -361,7 +365,7 @@ class DesignRunnerTests(unittest.TestCase):
         Image.new('RGB',(100,60),'red').save('input',format='PNG')
         replies = [
             {'models':[{'name':'vision:latest','digest':'fixture-digest'}]},
-            {'capabilities':['vision'],'details':{'format':'gguf'}},
+            {'capabilities':['vision','thinking'],'details':{'format':'gguf'}},
             {'done':True,'message':{'content':'Visible red rectangle.'}}
         ]
         conn = MagicMock()
@@ -376,8 +380,15 @@ class DesignRunnerTests(unittest.TestCase):
         self.assertEqual(transport.call_count,3)
         payload = json.loads(conn.request.call_args.args[2])
         self.assertEqual(payload['keep_alive'],0)
+        self.assertIs(payload['think'], False)
+        self.assertEqual(payload['options']['num_ctx'], 8192)
         self.assertTrue(payload['messages'][1]['images'])
         self.assertNotIn('tools',payload)
+        replies[-1]['done_reason'] = 'length'
+        response.read.side_effect = [json.dumps(r).encode() for r in replies]
+        with patch('http.client.HTTPConnection', return_value=conn):
+            with self.assertRaisesRegex(ValueError, 'incomplete vision'):
+                runner.vision_inspect({'vision_endpoint':'http://127.0.0.1:11434','model':'vision:latest','mode':'describe'})
 
     def test_visual_review_schema_rejects_untrusted_structure(self):
         valid = {'summary':'Visible layout issue','findings':[{'category':'spacing','severity':'medium',
@@ -418,6 +429,36 @@ class DesignRunnerTests(unittest.TestCase):
         payload = json.loads(conn.request.call_args.args[2])
         self.assertEqual(payload['format']['type'],'object')
         self.assertNotIn('tools',payload)
+
+    def test_invalid_vision_regions_require_fresh_valid_coarse_review(self):
+        from unittest.mock import patch, MagicMock
+        from PIL import Image
+        Image.new('RGB', (80, 60), 'white').save('input', format='PNG')
+        finding = {'category':'contrast','severity':'high','region':[0,.25,1,1],
+                   'observation':'Low text contrast','suggestion':'Use readable text colour'}
+        invalid = {'summary':'Review', 'findings':[finding]}
+        valid = {'summary':'Coarse review', 'findings':[{**finding,'region':[0,0,1,1]}]}
+        replies = [{'models':[{'name':'vision:latest','digest':'fixture'}]},
+                   {'capabilities':['vision','thinking'],'details':{'format':'gguf'}},
+                   {'done':True,'message':{'content':json.dumps(invalid)}},
+                   {'done':True,'message':{'content':json.dumps(valid)}}]
+        conn = MagicMock(); response = MagicMock(); response.status = 200
+        response.read.side_effect = [json.dumps(r).encode() for r in replies]
+        conn.getresponse.return_value = response
+        with patch('http.client.HTTPConnection', return_value=conn):
+            result = runner.vision_inspect({'vision_endpoint':'http://127.0.0.1:11434','model':'vision:latest','mode':'design_review'})
+        self.assertEqual(result['region_scope'], 'whole_image_retry')
+        self.assertEqual([r['status'] for r in result['review_attempts']], ['REJECTED','VALID'])
+        payload = json.loads(conn.request.call_args.args[2])
+        self.assertEqual(payload['format']['properties']['findings']['items']['properties']['region']['const'], [0,0,1,1])
+        self.assertEqual(payload['keep_alive'], 0)
+        self.assertNotIn('tools', payload)
+        # A second malformed response must still fail closed.
+        replies[-1]['message']['content'] = json.dumps(invalid)
+        response.read.side_effect = [json.dumps(r).encode() for r in replies]
+        with patch('http.client.HTTPConnection', return_value=conn):
+            with self.assertRaises(ValueError):
+                runner.vision_inspect({'vision_endpoint':'http://127.0.0.1:11434','model':'vision:latest','mode':'design_review'})
 
     def test_scene_repair_matches_and_preserves_source(self):
         from unittest.mock import patch
@@ -478,6 +519,28 @@ class DesignRunnerTests(unittest.TestCase):
             runner.run({'script': 'def extract(path, count): return []',
                         'args': {'operation': 'extract', 'count': 2}})
 
+    def test_decoded_image_pixel_limit(self):
+        from PIL import Image
+        Image.new('1', (4001, 4001)).save('input', format='PNG')
+        with self.assertRaises((ValueError, Image.DecompressionBombWarning)):
+            runner.open_reviewed_image()
+
+    def test_only_empty_generated_continuation_is_removed(self):
+        from pptx import Presentation
+        from pptx.util import Inches
+        deck = Presentation()
+        for heading, body in [('Scope', ''), ('Scope — continued', ''), ('Scope — continued', 'Preserved body text')]:
+            slide = deck.slides.add_slide(deck.slide_layouts[6])
+            for value in [heading, body, f'{len(deck.slides):02}']:
+                slide.shapes.add_textbox(0, 0, Inches(5), Inches(1)).text = value
+        removed = runner.remove_empty_continuations(deck, {'sections': [{'heading': 'Scope'}]})
+        self.assertEqual(len(removed), 1)
+        deck.save('continuation.pptx')
+        restored = Presentation('continuation.pptx')
+        self.assertEqual(len(restored.slides), 2)
+        self.assertEqual(restored.slides[1].shapes[1].text, 'Preserved body text')
+        self.assertEqual(restored.slides[1].shapes[-1].text, '02')
+
     def test_embedded_image_pixels_survive_svg_png_and_pdf(self):
         import fitz
         import xml.etree.ElementTree as ET
@@ -497,6 +560,32 @@ class DesignRunnerTests(unittest.TestCase):
             self.assertEqual(image.getpixel((100, 100))[:3], (209, 73, 54))
         with fitz.open('artifact.pdf') as pdf:
             self.assertEqual(pdf[0].get_pixmap().pixel(50, 50), (209, 73, 54))
+
+    def test_gradient_export_fails_closed_without_reviewed_renderer(self):
+        scene = {'width': 200, 'height': 100, 'elements': [
+            {'id': 'gradient', 'kind': 'rect', 'x': 0, 'y': 0, 'w': 200, 'h': 100,
+             'fill': {'kind': 'linear', 'stops': [{'offset': 0, 'colour': '#FF0000'}, {'offset': 1, 'colour': '#0000FF'}]}}]}
+        runner.svg_compose(scene, Path('gradient.svg'))
+        with self.assertRaisesRegex(ValueError, 'reviewed LibreOffice'):
+            runner.export_vector_scene(Path('gradient.svg'), Path('out.png'), 200, 100)
+
+    def test_embedded_image_fit_and_opacity_have_pixel_evidence(self):
+        import fitz
+        from PIL import Image
+        Image.new('RGB', (100, 50), 'red').save('asset-0', format='PNG')
+        scene = {'width': 200, 'height': 100, 'elements': [
+            {'id': 'contain', 'kind': 'image', 'x': 0, 'y': 0, 'w': 100, 'h': 100, 'asset': 0, 'fit': 'contain'},
+            {'id': 'cover', 'kind': 'image', 'x': 100, 'y': 0, 'w': 100, 'h': 100, 'asset': 0, 'fit': 'cover', 'opacity': .5}]}
+        Path('input').write_text(json.dumps(scene))
+        for suffix in ('png', 'pdf'):
+            runner.run({'args': {'operation': 'svg_compose', 'output': 'out.' + suffix, 'asset_count': 1}})
+        with fitz.open('artifact.pdf') as pdf:
+            pix = pdf[0].get_pixmap()
+            self.assertEqual(pix.pixel(50, 10), (255, 255, 255))
+            self.assertEqual(pix.pixel(50, 50), (255, 0, 0))
+            red, green, blue = pix.pixel(150, 10)
+            self.assertEqual(red, 255)
+            self.assertTrue(120 <= green <= 135 and green == blue)
 
     def test_existing_cv_formatting_preserves_all_text_and_opaque_parts(self):
         from docx import Document

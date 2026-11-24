@@ -94,6 +94,10 @@ fn main() -> anyhow::Result<()> {
             }
             return Ok(());
         }
+        "--skills-catalog" => {
+            println!("{}", vmt_local_agent::skills::catalog());
+            return Ok(());
+        }
         "--permissions-skills" => {
             let source = std::env::args()
                 .nth(3)

@@ -1273,7 +1273,7 @@ pub fn creative_live_check(model: &str, project: &str, protocol: &str) -> Result
     ensure!(matches!(protocol, "native" | "json"), "Use native or json");
     let workspace = Workspace::new(project)?;
     let suffix = format!("live-{protocol}");
-    let allowed = vec![
+    let allowed = [
         json!({"operation":"palette","seed":"#087F83","mode":"analogous","theme":"light"}),
         json!({"operation":"compose_v2","input":"business-proposal.docx.json","output":format!("{suffix}.docx")}),
         json!({"operation":"compose_v2","input":"business-presentation.pptx.json","output":format!("{suffix}.pptx")}),
@@ -1282,12 +1282,13 @@ pub fn creative_live_check(model: &str, project: &str, protocol: &str) -> Result
         json!({"operation":"scene_repair_plan","input":"feedback-request.json"}),
     ];
     let request = format!(
-        "Work only in this synthetic acceptance project. Create a professional business proposal in Word from business-proposal.docx.json and a presentation from business-presentation.pptx.json, using compose_v2. Create an accessible corporate palette from #087F83, analogous, light. Create an event poster from event-poster.json with approved original-landscape.jpg and a business card from business-card.json using the same image. Propose contrast/layout corrections from feedback-request.json using scene_repair_plan. Load the matching skills first. Output names MUST be {suffix}.docx, {suffix}.pptx, {suffix}-poster.png, {suffix}-card.svg. Preserve every source. Use only read tools, skill tools and the six design operations described. No shell, internet, memory writes, workflows, other file changes or vision inference in this reasoning run. Report the provenance supplied by the actual broker and any failures. Visual acceptance remains pending until separately inspected."
+        "Work only in this synthetic acceptance project. Create a professional business proposal in Word from business-proposal.docx.json and a presentation from business-presentation.pptx.json, using compose_v2. Create an accessible corporate palette from #087F83, analogous, light. Create an event poster from event-poster.json with approved original-landscape.jpg and a business card from business-card.json using the same image. Propose contrast/layout corrections from feedback-request.json using scene_repair_plan. Load each matching skill once before using it. Do not reload unchanged skills or reread unchanged files; move to execution after inspection. Output names MUST be {suffix}.docx, {suffix}.pptx, {suffix}-poster.png, {suffix}-card.svg. Preserve every source. Use only read tools, skill tools and the six design operations described. No shell, internet, memory writes, workflows, other file changes or vision inference in this reasoning run. Report the provenance supplied by the actual broker and any failures. Visual acceptance remains pending until separately inspected."
     );
     let settings = Settings {
         model: model.into(),
         protocol: protocol.into(),
-        max_steps: 28,
+        context_tokens: 16384,
+        max_steps: 40,
         task_minutes: 8,
         web_enabled: false,
         ..Default::default()

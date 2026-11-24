@@ -97,7 +97,7 @@ pub fn catalog() -> String {
         .collect();
     match portable_rows() {
         Ok(rows) => for row in rows.into_iter().filter(|r|r.status=="enabled") {
-            items.push(format!("{}: {} [reviewed portable guidance]",row.id,clip(&row.description,95)));
+            items.push(format!("{}: {} [reviewed portable guidance]",row.id,clip(&row.description,45)));
         },
         Err(_) => items.push("Portable skills unavailable: inspect Skills settings. No unreviewed packages are enabled.".into()),
     }

@@ -1,5 +1,36 @@
 # Design skill adapters — desktop 0.6.1
 
+## Current local acceptance baseline — 24 November 2026
+
+The historical increment notes below are superseded where applicable by
+[`../audits/local-creative-engine-acceptance.md`](../audits/local-creative-engine-acceptance.md).
+The merged desktop version is 0.6.2. Windows workers are staged from compiled-in
+bytes in a private invocation directory, avoiding the Windows command-line limit.
+Non-object adapter values are returned under `result`, alongside
+`broker_provenance`; object results retain their existing fields. Image extraction
+uses the same bounded, non-animated decoder as other image operations.
+
+Embedded image fitting and opacity are baked into bounded PNG pixels because
+MuPDF 1.26.7 ignores those SVG image attributes. Editable SVG is retained. Gradient
+exports use the already configured, pinned LibreOffice executable because MuPDF
+renders gradient fills black; ordinary scenes retain the PyMuPDF export path.
+This adds no arbitrary SVG input, renderer path, dependency, network permission
+or overwrite capability. Gradient rendering adds a bounded LibreOffice process.
+
+V2 composition removes only generated continuation slides with no content,
+discloses that repair, and removes the inherited Word title border. Structured
+vision may make one fresh, explicitly disclosed whole-image review attempt after
+rejecting invalid findings, within a 100-second inference budget. It never repairs
+malformed model JSON or interprets suggestions as executable instructions. Both
+attempts request model unloading. See the vision manifest and acceptance report
+for the reduced localization precision and remaining model limitations.
+
+The global agent prompt now relies on progressive skill disclosure rather than
+repeating every creative contract in every request. The normal profile context
+was explicitly increased to 16,384 tokens at the operator's request; output tokens
+and permission preferences were preserved. Context size remains an operator
+setting, not automatic hardware-aware routing.
+
 The user supplied two ZIP packages: `colour-intelligence` and
 `professional-document-design`. Their instructions and references are registered
 alongside the existing 18 VMT skills in the normal desktop profile. The loose

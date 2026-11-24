@@ -906,6 +906,12 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
             }
         }
     }
+    // Colour adapters historically return arrays or scalar strings as well as
+    // objects. Preserve their value under `result` before adding broker metadata;
+    // indexing a scalar/array as an object would panic the desktop agent thread.
+    if !result.is_object() {
+        result = json!({"result": result});
+    }
     result["broker_provenance"] = json!({
         "version": 1,
         "operation": plan.request.operation,

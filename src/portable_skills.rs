@@ -467,7 +467,13 @@ mod tests {
                 .contains("NEVER RUN")
         );
         assert!(registry.resource("sample", "../outside.md").is_err());
+        // Fixed built-in operations may pin a guidance manifest as their package
+        // resource; reading its bytes must neither require .py nor execute it.
+        let (manifest, fingerprint) = registry.adapter_script("sample", "SKILL.md").unwrap();
+        assert!(manifest.contains("name: sample"));
+        assert_eq!(fingerprint, registry.libraries[0].skills[0].fingerprint);
         fs::write(root.join("scripts/check.py"), "changed").unwrap();
         assert!(registry.load_skill("sample").is_err());
+        assert!(registry.adapter_script("sample", "SKILL.md").is_err());
     }
 }
