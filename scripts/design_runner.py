@@ -537,15 +537,56 @@ def svg_compose(data, output):
     return review
 
 
+def export_vector_scene(source, output, width, height):
+    """Render only SVG just produced by the fixed scene serializer, never external SVG."""
+    import fitz
+    import math
+    suffix = output.suffix.lower()
+    if suffix not in ('.png', '.pdf'):
+        raise ValueError('Unsupported graphics export')
+    # PyMuPDF's SVG importer converts the validated scene to a PDF page.
+    with fitz.open(stream=source.read_bytes(), filetype='svg') as svg:
+        if len(svg) != 1:
+            raise ValueError('Expected one vector page')
+        pdf_bytes = svg.convert_to_pdf()
+    with fitz.open(stream=pdf_bytes, filetype='pdf') as pdf:
+        if len(pdf) != 1:
+            raise ValueError('Expected one PDF page')
+        page = pdf[0]
+        if abs(page.rect.width-width) > 1 or abs(page.rect.height-height) > 1:
+            raise ValueError('Renderer changed canvas dimensions')
+        result = {'width_pt':page.rect.width,'height_pt':page.rect.height,
+                  'renderer':'PyMuPDF','visual_review':'PENDING'}
+        if suffix == '.pdf':
+            pdf.save(output)
+            result['format'] = 'pdf'
+            result['limitation'] = 'PDF rendering may outline text or flatten unsupported effects; SVG remains the editable source.'
+        else:
+            # Fixed 144 DPI, reduced proportionally for large canvases.
+            scale = min(2, 4096/max(width,height), math.sqrt(16_000_000/(width*height)))
+            pix = page.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False)
+            if pix.width*pix.height > 16_000_000 or max(pix.width,pix.height)>4096:
+                raise ValueError('Raster dimensions exceed limit')
+            pix.save(output)
+            result.update({'format':'png','width_px':pix.width,'height_px':pix.height,'effective_dpi':round(72*scale,2)})
+    return result
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
     if operation == 'svg_compose':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
-        output = Path('artifact.svg')
-        review = svg_compose(data, output)
+        source = Path('artifact.svg')
+        review = svg_compose(data, source)
+        suffix = Path(args['output']).suffix.lower()
+        if suffix not in ('.svg','.png','.pdf'):
+            raise ValueError('Unsupported graphics output')
+        output = Path('artifact'+suffix)
+        export = {} if suffix == '.svg' else export_vector_scene(source,output,data['width'],data['height'])
         return {'created':args['output'],'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),
-                'geometry_review':review,'visual_review':'PENDING'}
+                'geometry_review':review,'visual_review':'PENDING',
+                'scene_sha256':hashlib.sha256(Path('input').read_bytes()).hexdigest(),**export}
     if operation == 'layout_arrange':
         return layout_arrange(json.loads(Path('input').read_text(encoding='utf-8-sig')))
     if operation in ('layout_grid', 'layout_check'):

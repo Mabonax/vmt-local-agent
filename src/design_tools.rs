@@ -118,7 +118,7 @@ pub fn status(id: &str) -> &'static str {
 }
 pub fn integration_note(id: &str) -> &'static str {
     if id == "vector-graphics" {
-        "\nUse design_tool svg_compose with a reviewed JSON scene and a new SVG output. Native shapes and text remain editable. No raw SVG markup or external resources."
+        "\nUse design_tool svg_compose with a reviewed JSON scene and a new SVG, PNG or PDF output. Native shapes and text remain editable. No raw SVG markup or external resources."
     } else if id == "layout-intelligence" {
         "\nUse design_tool layout_grid or layout_check with a project-relative JSON input. Results use points and top-left coordinates. Geometry is not visual certification."
     } else if id == "typography-intelligence" {
@@ -336,10 +336,14 @@ impl Request {
             );
             if operation == "svg_compose" {
                 ensure!(
-                    path.extension()
-                        .and_then(|v| v.to_str())
-                        .is_some_and(|v| v.eq_ignore_ascii_case("svg")),
-                    "Output must be SVG"
+                    matches!(
+                        path.extension()
+                            .and_then(|v| v.to_str())
+                            .map(str::to_ascii_lowercase)
+                            .as_deref(),
+                        Some("svg" | "png" | "pdf")
+                    ),
+                    "Output must be SVG, PNG or PDF"
                 );
             }
             if matches!(operation, "compose" | "compose_v2") {

@@ -222,6 +222,25 @@ class DesignRunnerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runner.svg_compose(scene,Path('overflow.svg'))
 
+    def test_vector_png_pdf_export(self):
+        import fitz
+        from PIL import Image
+        scene = {'width':300,'height':200,'background':'#FFFFFF','elements':[
+            {'id':'red','kind':'rect','x':20,'y':20,'w':100,'h':100,'fill':'#FF0000'}]}
+        Path('input').write_text(json.dumps(scene))
+        for ext in ('png','pdf'):
+            result = runner.run({'args':{'operation':'svg_compose','output':'out.'+ext}})
+            self.assertEqual(result['format'],ext)
+            self.assertEqual(result['visual_review'],'PENDING')
+        with Image.open('artifact.png') as img:
+            self.assertEqual(img.size,(600,400))
+            self.assertEqual(img.getpixel((80,80))[:3],(255,0,0))
+        with fitz.open('artifact.pdf') as doc:
+            self.assertEqual(len(doc),1)
+            self.assertAlmostEqual(doc[0].rect.width,300)
+            self.assertAlmostEqual(doc[0].rect.height,200)
+            self.assertTrue(doc[0].get_drawings())
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

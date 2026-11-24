@@ -172,3 +172,6 @@ Import the repository `skills` library and review updated layout and new vector-
 ## Vector graphics V2 scene primitives
 
 `svg_compose` now accepts normalized polygons, internal linear/radial gradient definitions and editable multiline text with measured whitespace wrapping. It rejects overflow and unbreakable words. No new executable or dependency is required. Raw SVG markup, external URLs, arbitrary font paths and images remain unsupported. The previous single-line restriction is superseded. Geometry review is not a visual review; native rendering and PNG/PDF export remain future work.
+
+## Vector graphics export
+The same `svg_compose` operation now accepts new SVG, PNG or PDF outputs. All formats are derived from the same validated JSON and the fixed SVG serializer. PNG and PDF rendering use the existing pinned PyMuPDF dependency, not arbitrary SVG inputs or new processes. The broker verifies the resulting artifact hash and publishes without overwrite. Keep the scene JSON and SVG as editable sources. Raster export is bounded to 4096 pixels per edge and 16 million pixels total; PDF page dimensions are checked. Visual review remains PENDING. This does not establish SVG renderer fidelity for every gradient, font or effect.
