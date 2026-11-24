@@ -164,6 +164,32 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.layout_check(data)
 
+    def test_arrange_equal_gaps_and_alignment(self):
+        data = {'width':600,'height':300,'elements':[
+            {'id':'a','x':10,'y':20,'w':30,'h':40},
+            {'id':'b','x':80,'y':30,'w':40,'h':40},
+            {'id':'c','x':210,'y':40,'w':50,'h':40}]}
+        result = runner.layout_arrange({**data,'action':'distribute_x'})
+        a,b,c = result['layout']['elements']
+        self.assertAlmostEqual(b['x']-a['x']-a['w'],c['x']-b['x']-b['w'])
+        aligned = runner.layout_arrange({**data,'action':'top'})
+        self.assertEqual({e['y'] for e in aligned['layout']['elements']},{20})
+        self.assertEqual(data['elements'][1]['y'],30)
+
+    def test_svg_native_shapes_and_reject_markup(self):
+        import xml.etree.ElementTree as ET
+        data = {'width':600,'height':300,'elements':[
+            {'id':'a','kind':'rect','x':10,'y':20,'w':100,'h':40,'fill':'#123456'},
+            {'id':'b','kind':'ellipse','x':150,'y':20,'w':50,'h':50,'fill':'#FFFFFF'}]}
+        Path('input').write_text(json.dumps(data))
+        result = runner.run({'args':{'operation':'svg_compose','output':'out.svg'}})
+        self.assertEqual(result['geometry_review']['status'],'PASS')
+        root = ET.parse('artifact.svg').getroot()
+        self.assertEqual(len(root),3)
+        data['elements'][0]['onclick'] = 'alert(1)'
+        with self.assertRaises(ValueError):
+            runner.svg_compose(data,Path('bad.svg'))
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

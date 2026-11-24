@@ -372,9 +372,123 @@ def layout_check(data):
             'limitation': 'Axis-aligned rectangles only; intentional layering and text fit require separate review.'}
 
 
+def layout_arrange(data):
+    from copy import deepcopy
+    if not isinstance(data, dict) or set(data) - {'width','height','margin','elements','action'}:
+        raise ValueError('Invalid arrangement fields')
+    scene = deepcopy({k:v for k,v in data.items() if k != 'action'})
+    layout_check(scene)  # validate geometry before transforming
+    elements = scene['elements']
+    action = data['action']
+    if action in ('left','right','top','bottom','center_x','center_y'):
+        axis = 'x' if action in ('left','right','center_x') else 'y'
+        extent = 'w' if axis == 'x' else 'h'
+        if action in ('left','top'):
+            target = min(e[axis] for e in elements)
+            for e in elements:
+                e[axis] = target
+        elif action in ('right','bottom'):
+            target = max(e[axis]+e[extent] for e in elements)
+            for e in elements:
+                e[axis] = target-e[extent]
+        else:
+            target = (min(e[axis] for e in elements)+max(e[axis]+e[extent] for e in elements))/2
+            for e in elements:
+                e[axis] = target-e[extent]/2
+    elif action in ('distribute_x','distribute_y'):
+        if len(elements) < 3:
+            raise ValueError('Distribution requires at least three elements')
+        axis, extent = ('x','w') if action == 'distribute_x' else ('y','h')
+        ordered = sorted(elements, key=lambda e: (e[axis],e['id']))
+        start = ordered[0][axis]
+        end = max(e[axis]+e[extent] for e in ordered)
+        gap = (end-start-sum(e[extent] for e in ordered))/(len(ordered)-1)
+        if gap < 0:
+            raise ValueError('Not enough space for non-overlapping distribution')
+        for e in ordered:
+            e[axis] = start
+            start += e[extent]+gap
+    else:
+        raise ValueError('Unsupported arrangement')
+    for e in elements:
+        for k in ('x','y'):
+            e[k] = round(e[k], 4)
+    return {'layout': scene, 'review': layout_check(scene)}
+
+
+def svg_compose(data, output):
+    if not isinstance(data, dict) or set(data) - {'width','height','background','elements'}:
+        raise ValueError('Invalid scene fields')
+    w = bounded_number(data['width'],100,4000)
+    h = bounded_number(data['height'],100,4000)
+    def colour(v):
+        if not isinstance(v,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',v):
+            raise ValueError('Only HEX colours allowed')
+        return v
+    elements = data['elements']
+    if not isinstance(elements,list) or not 1 <= len(elements) <= 64:
+        raise ValueError('Provide 1-64 elements')
+    ns = 'http://www.w3.org/2000/svg'
+    ET.register_namespace('',ns)
+    root = ET.Element(f'{{{ns}}}svg', {'width':f'{w}pt','height':f'{h}pt','viewBox':f'0 0 {w} {h}'})
+    def add(tag, attrs, value=None):
+        node = ET.SubElement(root,f'{{{ns}}}{tag}',{k:str(v) for k,v in attrs.items()})
+        node.text = value
+    add('rect',{'width':w,'height':h,'fill':colour(data.get('background','#FFFFFF'))})
+    geometry = []
+    for e in elements:
+        if not isinstance(e,dict):
+            raise ValueError('Invalid object')
+        kind = e.get('kind')
+        base = {'id','kind','x','y','w','h','fill'}
+        extra = {'rect':{'radius'},'ellipse':set(),'text':{'text','size','font','weight'}}.get(kind)
+        if extra is None or set(e)-base-extra:
+            raise ValueError('Unsupported object or property')
+        g = {k:e[k] for k in ('id','x','y','w','h')}
+        geometry.append(g)
+        # Validate each box before using it in SVG arithmetic.
+        if layout_check({'width':w,'height':h,'elements':[g]})['status'] != 'PASS':
+            raise ValueError('Object outside canvas')
+        x,y,ew,eh = (g[k] for k in ('x','y','w','h'))
+        attrs = {'id':'object-'+g['id'],'fill':colour(e['fill'])}
+        if kind == 'rect':
+            add('rect',{**attrs,'x':x,'y':y,'width':ew,'height':eh,'rx':bounded_number(e.get('radius',0),0,min(ew,eh)/2)})
+        elif kind == 'ellipse':
+            add('ellipse',{**attrs,'cx':x+ew/2,'cy':y+eh/2,'rx':ew/2,'ry':eh/2})
+        else:
+            value = text(e['text'],400)
+            if not value.strip() or any(c in value for c in '\n\r\t'):
+                raise ValueError('Text must be a single nonempty line')
+            size = bounded_number(e.get('size',12),8,72)
+            font = e.get('font','Arial' if os.name=='nt' else 'Liberation Sans')
+            weight = e.get('weight','normal')
+            if weight not in ('normal','bold'):
+                raise ValueError('Invalid weight')
+            from PIL import ImageFont
+            face = ImageFont.truetype(reviewed_font(font),round(size*4))
+            ascent,descent = face.getmetrics()
+            # Reserve extra space for bold and renderer variance; actual rendering still needed.
+            factor = 1.15 if weight == 'bold' else 1.05
+            if face.getlength(value)/4*factor > ew or (ascent+descent)/4 > eh:
+                raise ValueError('Text exceeds declared box')
+            add('text',{**attrs,'x':x,'y':y+ascent/4,'font-family':font,'font-size':size,'font-weight':weight},value)
+    review = layout_check({'width':w,'height':h,'elements':geometry})
+    # Layering is allowed but never concealed from the caller.
+    ET.ElementTree(root).write(output,encoding='utf-8',xml_declaration=True)
+    return review
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation == 'svg_compose':
+        data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
+        output = Path('artifact.svg')
+        review = svg_compose(data, output)
+        return {'created':args['output'],'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),
+                'geometry_review':review,'visual_review':'PENDING'}
+    if operation == 'layout_arrange':
+        return layout_arrange(json.loads(Path('input').read_text(encoding='utf-8-sig')))
     if operation in ('layout_grid', 'layout_check'):
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         return layout_grid(data) if operation == 'layout_grid' else layout_check(data)

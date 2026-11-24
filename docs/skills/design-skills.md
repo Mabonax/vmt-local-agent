@@ -164,3 +164,7 @@ The repository includes a portable guidance package at `skills/typography-intell
 ## Layout Intelligence V1
 
 Import `skills/layout-intelligence` through the reviewed skills registry (select the parent `skills` library). `layout_grid` and `layout_check` take a single project-relative JSON input, limited to 64 KiB, fingerprinted at approval and execution. They return point-based rectangular geometry, not a rendered artifact. Grid generation supports up to 12 by 12 cells, and validation supports 64 elements with safe-margin and collision checks. No arbitrary paths or scripts are accepted. The geometry is advisory; it does not yet drive native Office shapes automatically. See the skill manifest for exact contracts.
+
+## Composition and vector graphics V1
+
+Import the repository `skills` library and review updated layout and new vector-graphics fingerprints. `layout_arrange` aligns edges/centres or distributes equal gaps; it returns geometry and a fresh review without modifying the source. `svg_compose` publishes a new editable SVG using a fixed XML serializer, allowlisted shapes and single-line measured text, with reported rectangular collisions. No raw markup, links, external assets or arbitrary fonts. Intentional layers may produce REVIEW_REQUIRED; visual review remains pending. PNG/PDF export and native Office layout integration are not included. CI tests cover arrangement and shape serialization; live-model acceptance remains separate.

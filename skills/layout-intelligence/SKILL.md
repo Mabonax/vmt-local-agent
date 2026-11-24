@@ -25,3 +25,6 @@ To check a composition, use layout_check with an input like:
 ```
 
 Correct unexpected overlaps and safe-area violations before generating artwork. Use typography-intelligence measure_text for representative text fit. Split dense content rather than reducing type indefinitely. Intentional overlays require separate explicit review. The validator checks rectangles, not optical balance, actual text fit, native rendering or aesthetic quality. Do not claim these are certified. Render final output and inspect it separately.
+
+## Arrangement
+Use layout_arrange with the same layout_check JSON plus action: left, right, top, bottom, center_x, center_y, distribute_x or distribute_y. Distribution needs at least three elements. Results include the updated layout and a fresh collision report. No source overwrite occurs.

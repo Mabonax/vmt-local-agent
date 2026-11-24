@@ -103,6 +103,7 @@ pub fn status(id: &str) -> &'static str {
         "professional-document-design-v2",
         "typography-intelligence",
         "layout-intelligence",
+        "vector-graphics",
     ]
     .contains(&id)
     {
@@ -116,7 +117,9 @@ pub fn status(id: &str) -> &'static str {
     }
 }
 pub fn integration_note(id: &str) -> &'static str {
-    if id == "layout-intelligence" {
+    if id == "vector-graphics" {
+        "\nUse design_tool svg_compose with a reviewed JSON scene and a new SVG output. Native shapes and text remain editable. No raw SVG markup or external resources."
+    } else if id == "layout-intelligence" {
         "\nUse design_tool layout_grid or layout_check with a project-relative JSON input. Results use points and top-left coordinates. Geometry is not visual certification."
     } else if id == "typography-intelligence" {
         "\nUse design_tool type_scale or measure_text. Measurements use the approved local font and are estimates of Office layout, not visual certification."
@@ -141,7 +144,9 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ["layout_grid", "layout_check"].contains(&self.operation.as_str()) {
+        if self.operation == "svg_compose" {
+            ("vector-graphics", "SKILL.md")
+        } else if ["layout_grid", "layout_check", "layout_arrange"].contains(&self.operation.as_str()) {
             ("layout-intelligence", "SKILL.md")
         } else if ["type_scale", "measure_text"].contains(&self.operation.as_str()) {
             ("typography-intelligence", "SKILL.md")
@@ -162,7 +167,8 @@ impl Request {
                 || ADVANCED_COLOUR.contains(&operation)
                 || operation == "compose_v2"
                 || ["type_scale", "measure_text"].contains(&operation)
-                || ["layout_grid", "layout_check"].contains(&operation),
+                || ["layout_grid", "layout_check", "layout_arrange"].contains(&operation)
+                || operation == "svg_compose",
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -175,7 +181,7 @@ impl Request {
             "categorical" => &["seed", "count"],
             "simulate" => &["seed", "mode"],
             "system" => &["seed", "theme"],
-            "layout_grid" | "layout_check" => &["input"],
+            "layout_grid" | "layout_check" | "layout_arrange" => &["input"],
             "type_scale" => &["mode", "size"],
             "measure_text" => &["font", "sample", "size", "width"],
             _ => &["input", "output"],
@@ -286,6 +292,8 @@ impl Request {
             "render",
             "layout_grid",
             "layout_check",
+            "layout_arrange",
+            "svg_compose",
         ]
         .contains(&operation)
         {
@@ -298,7 +306,8 @@ impl Request {
                 .unwrap_or("")
                 .to_ascii_lowercase();
             let extensions: &[&str] = match operation {
-                "compose" | "compose_v2" | "layout_grid" | "layout_check" => &["json"],
+                "compose" | "compose_v2" | "layout_grid" | "layout_check" | "layout_arrange"
+                | "svg_compose" => &["json"],
                 "extract" => &["png", "jpg", "jpeg", "webp"],
                 _ => &["docx", "pptx"],
             };
@@ -307,7 +316,7 @@ impl Request {
                 "Unsupported input format"
             );
         }
-        if ["compose", "compose_v2", "render"].contains(&operation) {
+        if ["compose", "compose_v2", "render", "svg_compose"].contains(&operation) {
             let output = self.output.as_deref().context("Output path is required")?;
             ensure!(
                 !output.is_empty()
@@ -323,6 +332,12 @@ impl Request {
                 !path.exists() && path.parent().is_some_and(Path::is_dir),
                 "Output must be new and its parent must exist"
             );
+            if operation == "svg_compose" {
+                ensure!(
+                    path.extension().and_then(|v| v.to_str()).is_some_and(|v| v.eq_ignore_ascii_case("svg")),
+                    "Output must be SVG"
+                );
+            }
             if matches!(operation, "compose" | "compose_v2") {
                 ensure!(
                     matches!(
@@ -346,7 +361,7 @@ impl Request {
                     &workspace.resolve(input, false)?,
                     if matches!(
                         self.operation.as_str(),
-                        "compose" | "compose_v2" | "layout_grid" | "layout_check"
+                        "compose" | "compose_v2" | "layout_grid" | "layout_check" | "layout_arrange" | "svg_compose"
                     ) {
                         64 * 1024
                     } else {
@@ -523,7 +538,10 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     if let Some(output) = &plan.request.output {
         plan.request.validate(workspace)?;
         let destination = workspace.resolve(output, true)?;
-        if matches!(plan.request.operation.as_str(), "compose" | "compose_v2") {
+        if matches!(
+            plan.request.operation.as_str(),
+            "compose" | "compose_v2" | "svg_compose"
+        ) {
             let suffix = Path::new(output)
                 .extension()
                 .context("Missing output extension")?
