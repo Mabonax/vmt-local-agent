@@ -19,3 +19,6 @@ Polygons use `kind: polygon` and `points` containing 3–64 pairs of normalized 
 
 ## Export
 Use the same reviewed JSON scene with `svg_compose` and a new output ending in `.svg`, `.png` or `.pdf`. Generate SVG first to retain an editable source. PNG/PDF are rendered only from the worker's freshly serialized scene using PyMuPDF. PNG targets 144 DPI, reduced for large canvases, with 4096-pixel edge and 16-million-pixel limits. PDF preserves the canvas size; text may be outlined and effects may be flattened. Export does not certify visual fidelity, print colour management or accessibility. Arbitrary external SVG input is not supported.
+
+## Reviewed image assets
+Pass `assets` (up to four project-relative PNG/JPEG/WebP paths) in the svg_compose request, not the scene. Image elements use `kind: image`, `asset: 0` (zero-based index), `fit: contain` or `cover`, and id/x/y/w/h; omit fill. All objects accept opacity 0–1. The broker hashes each asset before approval and rechecks it before copying into the private worker directory. The worker re-encodes images as metadata-free PNG, limits each to 1600 pixels on its longest edge, and embeds only internally generated data URLs. No source paths or arbitrary URLs in scene objects. Visual fidelity of image rendering remains subject to review.

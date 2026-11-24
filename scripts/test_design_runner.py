@@ -303,6 +303,21 @@ class DesignRunnerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runner.image_adjust(args)
 
+    def test_svg_reviewed_image_asset(self):
+        from PIL import Image
+        import xml.etree.ElementTree as ET
+        Image.new('RGB',(40,20),'red').save('asset-0',format='PNG')
+        scene = {'width':300,'height':200,'elements':[{'id':'photo','kind':'image','x':10,'y':10,'w':100,'h':80,'asset':0,'fit':'contain','opacity':0.8}]}
+        with self.assertRaises(ValueError):
+            runner.svg_compose(scene,Path('unapproved.svg'))
+        runner.svg_compose(scene,Path('approved.svg'),1)
+        node = ET.parse('approved.svg').getroot().find('{http://www.w3.org/2000/svg}image')
+        self.assertTrue(node.get('{http://www.w3.org/1999/xlink}href').startswith('data:image/png;base64,'))
+        self.assertEqual(node.get('opacity'),'0.8')
+        scene['elements'][0]['asset'] = '../secret.png'
+        with self.assertRaises(ValueError):
+            runner.svg_compose(scene,Path('bad.svg'),1)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

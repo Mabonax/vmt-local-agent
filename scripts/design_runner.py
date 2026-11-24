@@ -416,7 +416,14 @@ def layout_arrange(data):
     return {'layout': scene, 'review': layout_check(scene)}
 
 
-def svg_compose(data, output):
+def svg_compose(data, output, asset_count=0):
+    import base64
+    import io
+    from PIL import Image, ImageOps
+    if type(asset_count) is not int or not 0 <= asset_count <= 4:
+        raise ValueError("Invalid asset count")
+    asset_cache = {}
+    encoded_total = 0
     if not isinstance(data, dict) or set(data) - {'width','height','background','elements'}:
         raise ValueError('Invalid scene fields')
     w = bounded_number(data['width'],100,4000)
@@ -470,9 +477,10 @@ def svg_compose(data, output):
         if not isinstance(e,dict):
             raise ValueError('Invalid object')
         kind = e.get('kind')
-        base = {'id','kind','x','y','w','h','fill'}
+        base = {'id','kind','x','y','w','h','fill','opacity'}
         extra = {'rect':{'radius'},'ellipse':set(),'polygon':{'points'},
-                 'text':{'text','size','font','weight','line_height'}}.get(kind)
+                 'text':{'text','size','font','weight','line_height'},
+                 'image':{'asset','fit'}}.get(kind)
         if extra is None or set(e)-base-extra:
             raise ValueError('Unsupported object or property')
         g = {k:e[k] for k in ('id','x','y','w','h')}
@@ -480,7 +488,40 @@ def svg_compose(data, output):
         if layout_check({'width':w,'height':h,'elements':[g]})['status'] != 'PASS':
             raise ValueError('Object outside canvas')
         x,y,ew,eh = (g[k] for k in ('x','y','w','h'))
-        attrs = {'id':'object-'+g['id'],'fill':fill(e['fill'],g['id'])}
+        attrs = {'id':'object-'+g['id'],'opacity':bounded_number(e.get('opacity',1),0,1)}
+        if kind == 'image':
+            if 'fill' in e:
+                raise ValueError('Image does not accept fill')
+            index = e['asset']
+            if type(index) is not int or not 0 <= index < asset_count:
+                raise ValueError('Image asset not approved')
+            fit = e.get('fit','contain')
+            if fit not in ('contain','cover'):
+                raise ValueError('Invalid image fit')
+            if index not in asset_cache:
+                Image.MAX_IMAGE_PIXELS = 16_000_000
+                warnings.simplefilter('error',Image.DecompressionBombWarning)
+                with Image.open(f'asset-{index}',formats=['PNG','JPEG','WEBP']) as original:
+                    if original.width*original.height>16_000_000 or getattr(original,'n_frames',1)!=1:
+                        raise ValueError('Invalid image asset dimensions')
+                    original.load()
+                    decoded = ImageOps.exif_transpose(original).convert('RGBA')
+                    decoded.thumbnail((1600,1600),Image.Resampling.LANCZOS)
+                    decoded.info.clear()
+                    buf = io.BytesIO()
+                    decoded.save(buf,format='PNG')
+                    encoded = base64.b64encode(buf.getvalue()).decode('ascii')
+                    asset_cache[index] = encoded
+            encoded = asset_cache[index]
+            encoded_total += len(encoded)
+            if encoded_total > 10*1024*1024:
+                raise ValueError('Embedded assets exceed limit')
+            # xlink is retained for compatibility with older SVG renderers.
+            add('image',{**attrs,'x':x,'y':y,'width':ew,'height':eh,
+                         '{http://www.w3.org/1999/xlink}href':'data:image/png;base64,'+encoded,
+                         'preserveAspectRatio':'xMidYMid meet' if fit=='contain' else 'xMidYMid slice'})
+            continue
+        attrs['fill'] = fill(e['fill'],g['id'])
         if kind == 'rect':
             add('rect',{**attrs,'x':x,'y':y,'width':ew,'height':eh,'rx':bounded_number(e.get('radius',0),0,min(ew,eh)/2)})
         elif kind == 'ellipse':
@@ -699,7 +740,7 @@ def run(request):
     if operation == 'svg_compose':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         source = Path('artifact.svg')
-        review = svg_compose(data, source)
+        review = svg_compose(data, source, args.get("asset_count",0))
         suffix = Path(args['output']).suffix.lower()
         if suffix not in ('.svg','.png','.pdf'):
             raise ValueError('Unsupported graphics output')

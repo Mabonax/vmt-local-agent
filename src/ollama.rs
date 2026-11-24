@@ -66,19 +66,42 @@ pub fn models(endpoint: &str) -> Result<Vec<String>> {
 }
 
 pub fn action_schema() -> Value {
-    json!({"type":"object","properties":{
-        "kind":{"type":"string","enum":["tool","final"]},
-        "message":{"type":"string"},
-        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},
-        "args":{"type":"object","properties":{
-            "path":{"type":"string"},"query":{"type":"string"},"content":{"type":"string"},
-            "old":{"type":"string"},"new":{"type":"string"},"command":{"type":"string"},"url":{"type":"string"},
-            "start_line":{"type":"integer"},"max_lines":{"type":"integer"},"id":{"type":"string"},
-            "server":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object"},
-            "model":{"type":"string"},"kind":{"type":"string"},"evidence":{"type":"string"},
-            "operation":{"type":"string"},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer"},"font":{"type":"string"},"sample":{"type":"string"},"size":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},"amount":{"type":"integer","minimum":0,"maximum":200}
-        },"additionalProperties":false}
-    },"required":["kind","message","tool","args"],"additionalProperties":false})
+    let mut schema = json!({"type":"object","properties":{"kind":{"type":"string","enum":["tool","final"]},"message":{"type":"string"},"tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},"args":{"type":"object","additionalProperties":false}},"required":["kind","message","tool","args"],"additionalProperties":false});
+    let mut properties = serde_json::Map::new();
+    properties.insert("path".into(), json!({"type":"string"}));
+    properties.insert("query".into(), json!({"type":"string"}));
+    properties.insert("content".into(), json!({"type":"string"}));
+    properties.insert("old".into(), json!({"type":"string"}));
+    properties.insert("new".into(), json!({"type":"string"}));
+    properties.insert("command".into(), json!({"type":"string"}));
+    properties.insert("url".into(), json!({"type":"string"}));
+    properties.insert("start_line".into(), json!({"type":"integer"}));
+    properties.insert("max_lines".into(), json!({"type":"integer"}));
+    properties.insert("id".into(), json!({"type":"string"}));
+    properties.insert("server".into(), json!({"type":"string"}));
+    properties.insert("tool".into(), json!({"type":"string"}));
+    properties.insert("arguments".into(), json!({"type":"object"}));
+    properties.insert("model".into(), json!({"type":"string"}));
+    properties.insert("kind".into(), json!({"type":"string"}));
+    properties.insert("evidence".into(), json!({"type":"string"}));
+    properties.insert("operation".into(), json!({"type":"string"}));
+    properties.insert("seed".into(), json!({"type":"string"}));
+    properties.insert("mode".into(), json!({"type":"string"}));
+    properties.insert("theme".into(), json!({"type":"string"}));
+    properties.insert("foreground".into(), json!({"type":"string"}));
+    properties.insert("background".into(), json!({"type":"string"}));
+    properties.insert("input".into(), json!({"type":"string"}));
+    properties.insert("output".into(), json!({"type":"string"}));
+    properties.insert("count".into(), json!({"type":"integer"}));
+    properties.insert("font".into(), json!({"type":"string"}));
+    properties.insert("sample".into(), json!({"type":"string"}));
+    properties.insert("size".into(), json!({"type":"integer"}));
+    properties.insert("width".into(), json!({"type":"integer"}));
+    properties.insert("height".into(), json!({"type":"integer"}));
+    properties.insert("amount".into(), json!({"type":"integer","minimum":0,"maximum":200}));
+    properties.insert("assets".into(), json!({"type":"array","items":{"type":"string"},"maxItems":4}));
+    schema["properties"]["args"]["properties"] = Value::Object(properties);
+    schema
 }
 
 pub struct ModelTurn {
@@ -116,6 +139,27 @@ pub fn native_mode(settings: &Settings) -> Result<bool> {
     })
 }
 
+fn design_properties() -> Value {
+    let mut properties = serde_json::Map::new();
+    properties.insert("operation".into(), json!({"type":"string","enum":["palette","contrast","extract","compose","render","repair","gradient","categorical","simulate","system","distance","compose_v2","type_scale","measure_text","layout_grid","layout_check","layout_arrange","svg_compose","image_inspect","image_prepare","image_adjust"]}));
+    properties.insert("seed".into(), json!({"type":"string"}));
+    properties.insert("mode".into(), json!({"type":"string"}));
+    properties.insert("theme".into(), json!({"type":"string"}));
+    properties.insert("foreground".into(), json!({"type":"string"}));
+    properties.insert("background".into(), json!({"type":"string"}));
+    properties.insert("input".into(), json!({"type":"string"}));
+    properties.insert("output".into(), json!({"type":"string"}));
+    properties.insert("count".into(), json!({"type":"integer","minimum":2,"maximum":64}));
+    properties.insert("font".into(), json!({"type":"string","enum":["Arial","Liberation Sans"]}));
+    properties.insert("sample".into(), json!({"type":"string"}));
+    properties.insert("size".into(), json!({"type":"integer"}));
+    properties.insert("width".into(), json!({"type":"integer"}));
+    properties.insert("height".into(), json!({"type":"integer"}));
+    properties.insert("amount".into(), json!({"type":"integer","minimum":0,"maximum":200}));
+    properties.insert("assets".into(), json!({"type":"array","items":{"type":"string"},"maxItems":4}));
+    Value::Object(properties)
+}
+
 fn tool_definitions(settings: &Settings) -> Value {
     if settings.mode == "chat" {
         return json!([]);
@@ -123,8 +167,8 @@ fn tool_definitions(settings: &Settings) -> Value {
     let definitions = [
         (
             "design_tool",
-            "Run a reviewed local design adapter. Operations: image_inspect(input raster), image_prepare(input raster,output PNG/JPEG/WebP,width,height in pixels,mode contain/cover), image_adjust(input,output,mode,optional amount percent) require image-intelligence. Layout: layout_grid(input JSON), layout_check(input JSON), layout_arrange(input JSON) require layout-intelligence. svg_compose(input JSON,output SVG/PNG/PDF) requires vector-graphics. Typography: type_scale(mode: document/presentation,size), measure_text(font,sample,size,width in points) require typography-intelligence. Other operations: repair(foreground,background), gradient(foreground,background,count), categorical(seed,count), simulate(seed,mode: protan/deutan/tritan), system(seed,theme), distance(foreground,background) require colour-intelligence-v2. V1 operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), compose_v2(input JSON with design_system,output DOCX/PPTX; requires professional-document-design-v2), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
-            json!({"operation":{"type":"string","enum":["palette","contrast","extract","compose","render","repair","gradient","categorical","simulate","system","distance","compose_v2","type_scale","measure_text","layout_grid","layout_check","layout_arrange","svg_compose","image_inspect","image_prepare","image_adjust"]},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":64},"font":{"type":"string","enum":["Arial","Liberation Sans"]},"sample":{"type":"string"},"size":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},"amount":{"type":"integer","minimum":0,"maximum":200}}),
+            "Run a reviewed local design adapter. Operations: image_inspect(input raster), image_prepare(input raster,output PNG/JPEG/WebP,width,height in pixels,mode contain/cover), image_adjust(input,output,mode,optional amount percent) require image-intelligence. Layout: layout_grid(input JSON), layout_check(input JSON), layout_arrange(input JSON) require layout-intelligence. svg_compose(input JSON,output SVG/PNG/PDF, optional assets array of local raster paths; image objects refer to zero-based asset index) requires vector-graphics. Typography: type_scale(mode: document/presentation,size), measure_text(font,sample,size,width in points) require typography-intelligence. Other operations: repair(foreground,background), gradient(foreground,background,count), categorical(seed,count), simulate(seed,mode: protan/deutan/tritan), system(seed,theme), distance(foreground,background) require colour-intelligence-v2. V1 operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), compose_v2(input JSON with design_system,output DOCX/PPTX; requires professional-document-design-v2), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
+            design_properties(),
             vec!["operation"],
         ),
         (

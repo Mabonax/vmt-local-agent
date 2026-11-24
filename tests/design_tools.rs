@@ -30,6 +30,13 @@ fn design_actions_cannot_bypass_review_or_change_after_review() {
         .unwrap()
         .approve(portable_skills::inspect_library(source.parent().unwrap()).unwrap())
         .unwrap();
+    let vector = source.parent().unwrap().join("vector-graphics");
+    fs::create_dir_all(&vector).unwrap();
+    fs::write(vector.join("SKILL.md"), "---\nname: vector-graphics\ndescription: Fixture only\n---\n").unwrap();
+    Registry::load()
+        .unwrap()
+        .approve(portable_skills::inspect_library(source.parent().unwrap()).unwrap())
+        .unwrap();
     let fake_executable = fixture.path().join("fake-runtime.exe");
     fs::write(&fake_executable, "not executed").unwrap();
     design_tools::configure(
@@ -50,6 +57,16 @@ fn design_actions_cannot_bypass_review_or_change_after_review() {
     else {
         panic!("Design execution must require review")
     };
+    fs::write(project.join("asset.png"), "reviewed bytes").unwrap();
+    let graphic = json!({"operation":"svg_compose","input":"input.json","output":"out.svg","assets":["asset.png"]});
+    let plan = design_tools::prepare(&tools.workspace, &graphic).unwrap();
+    fs::write(project.join("asset.png"), "changed bytes").unwrap();
+    assert!(
+        design_tools::execute(&tools.workspace, &plan, &Arc::new(AtomicBool::new(false)))
+            .unwrap_err()
+            .to_string()
+            .contains("Assets changed")
+    );
     let mut grant = TaskPermissions::new(&tools.workspace, true);
     assert!(
         grant

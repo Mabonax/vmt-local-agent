@@ -43,6 +43,7 @@ pub struct Request {
     pub width: Option<u16>,
     pub height: Option<u16>,
     pub amount: Option<u16>,
+    pub assets: Option<Vec<String>>,
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -50,6 +51,7 @@ pub struct Plan {
     pub runtime: Runtime,
     pub fingerprint: String,
     pub input_sha256: Option<String>,
+    pub asset_hashes: Vec<String>,
     pub workspace: PathBuf,
 }
 fn sha(bytes: &[u8]) -> String {
@@ -149,9 +151,7 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ["image_inspect", "image_prepare", "image_adjust"]
-            .contains(&self.operation.as_str())
-        {
+        if ["image_inspect", "image_prepare", "image_adjust"].contains(&self.operation.as_str()) {
             ("image-intelligence", "SKILL.md")
         } else if self.operation == "svg_compose" {
             ("vector-graphics", "SKILL.md")
@@ -189,6 +189,7 @@ impl Request {
             "contrast" => &["foreground", "background"],
             "extract" => &["input", "count"],
             "image_inspect" => &["input"],
+            "svg_compose" => &["input", "output", "assets"],
             "image_prepare" => &["input", "output", "width", "height", "mode"],
             "image_adjust" => &["input", "output", "mode", "amount"],
             "repair" | "distance" => &["foreground", "background"],
@@ -310,10 +311,7 @@ impl Request {
                 ),
                 "Unsupported image adjustment"
             );
-            ensure!(
-                self.amount.unwrap_or(100) <= 200,
-                "Adjustment exceeds limit"
-            );
+            ensure!(self.amount.unwrap_or(100) <= 200, "Adjustment exceeds limit");
             if matches!(self.mode.as_deref(), Some("grayscale" | "circle")) {
                 ensure!(self.amount.is_none(), "This mode takes no amount");
             }
@@ -439,7 +437,35 @@ impl Request {
                 );
             }
         }
+        if let Some(assets) = &self.assets {
+            ensure!(assets.len() <= 4, "At most four image assets");
+            for asset in assets {
+                ensure!(asset.len() <= 240, "Asset path too long");
+                let path = workspace.resolve(asset, false)?;
+                ensure!(
+                    matches!(
+                        path.extension()
+                            .and_then(|v| v.to_str())
+                            .map(str::to_ascii_lowercase)
+                            .as_deref(),
+                        Some("png" | "jpg" | "jpeg" | "webp")
+                    ),
+                    "Unsupported asset format"
+                );
+            }
+        }
         Ok(())
+    }
+    fn asset_bytes(&self, workspace: &Workspace) -> Result<Vec<Vec<u8>>> {
+        let mut total = 0;
+        let mut result = Vec::new();
+        for asset in self.assets.iter().flatten() {
+            let bytes = bounded(&workspace.resolve(asset, false)?, 4 * 1024 * 1024)?;
+            total += bytes.len();
+            ensure!(total <= 8 * 1024 * 1024, "Asset bundle exceeds limit");
+            result.push(bytes);
+        }
+        Ok(result)
     }
     fn input_bytes(&self, workspace: &Workspace) -> Result<Option<Vec<u8>>> {
         self.input
@@ -471,8 +497,14 @@ pub fn prepare(workspace: &Workspace, arguments: &Value) -> Result<Plan> {
     let (_, fingerprint) =
         Registry::load()?.adapter_script(request.skill_script().0, request.skill_script().1)?;
     let input_sha256 = request.input_bytes(workspace)?.map(|data| sha(&data));
+    let asset_hashes = request
+        .asset_bytes(workspace)?
+        .iter()
+        .map(|bytes| sha(bytes))
+        .collect();
     Ok(Plan {
         request,
+        asset_hashes,
         runtime: runtime()?,
         fingerprint,
         input_sha256,
@@ -482,12 +514,13 @@ pub fn prepare(workspace: &Workspace, arguments: &Value) -> Result<Plan> {
 impl Plan {
     pub fn describe(&self) -> String {
         format!(
-            "Run reviewed local design adapter as your Windows user (NOT OS-sandboxed). No shell, installs or network operation is provided. Outputs never overwrite files.\nSkill: {}\nPackage SHA-256: {}\nPython: {}\nRenderer: {}\nInput SHA-256: {:?}\nExact arguments: {}\nRendered images require visual review; render success alone is not visual acceptance.",
+            "Run reviewed local design adapter as your Windows user (NOT OS-sandboxed). No shell, installs or network operation is provided. Outputs never overwrite files.\nSkill: {}\nPackage SHA-256: {}\nPython: {}\nRenderer: {}\nInput SHA-256: {:?}\nAsset SHA-256 (in request order): {:?}\nExact arguments: {}\nRendered images require visual review; render success alone is not visual acceptance.",
             self.request.skill_script().0,
             self.fingerprint,
             self.runtime.python,
             self.runtime.soffice,
             self.input_sha256,
+            self.asset_hashes,
             serde_json::to_string_pretty(&self.request).unwrap_or_default()
         )
     }
@@ -538,7 +571,15 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         input.as_ref().map(|data| sha(data)) == plan.input_sha256,
         "Input changed after review; request a fresh review"
     );
+    let assets = plan.request.asset_bytes(workspace)?;
+    ensure!(
+        assets.iter().map(|bytes| sha(bytes)).collect::<Vec<_>>() == plan.asset_hashes,
+        "Assets changed after review; request a fresh review"
+    );
     let scratch = tempfile::tempdir()?;
+    for (index, bytes) in assets.iter().enumerate() {
+        fs::write(scratch.path().join(format!("asset-{index}")), bytes)?;
+    }
     if let Some(input) = input {
         fs::write(scratch.path().join("input"), input)?;
     }
@@ -546,6 +587,9 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     args.as_object_mut()
         .unwrap()
         .retain(|_, value| !value.is_null());
+    // Never expose workspace asset paths to the worker.
+    args.as_object_mut().unwrap().remove("assets");
+    args["asset_count"] = json!(assets.len());
     let payload = serde_json::to_vec(
         &json!({"script":script,"colour_base":colour_base,"args":args,"soffice":plan.runtime.soffice}),
     )?;
