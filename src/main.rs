@@ -1,10 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-use vmt_local_agent::{agent, ollama, store, types, workspace};
+use vmt_local_agent::{agent, ollama, projects, store, types, workspace};
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if let Some(index) = args.iter().position(|a| a == "--data-dir") {
+        store::configure_data_dir(
+            args.get(index + 1)
+                .ok_or_else(|| anyhow::anyhow!("--data-dir requires a path"))?
+                .into(),
+        )?;
+    }
     if let Some(index) = args.iter().position(|a| a == "--smoke-test") {
         return agent::smoke_test(
             args.get(index + 1)
@@ -20,8 +27,9 @@ fn main() -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(concat!("VMT Local Agent ", env!("CARGO_PKG_VERSION")))
-            .with_inner_size([1240.0, 740.0])
-            .with_min_inner_size([940.0, 650.0]),
+            .with_inner_size([1360.0, 760.0])
+            .with_position([24.0, 24.0])
+            .with_min_inner_size([860.0, 620.0]),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };

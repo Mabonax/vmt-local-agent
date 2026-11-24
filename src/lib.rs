@@ -5,6 +5,7 @@ pub mod mcp;
 pub mod memory;
 pub mod ollama;
 pub mod policy;
+pub mod projects;
 pub mod research;
 pub mod skills;
 pub mod store;

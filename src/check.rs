@@ -13,6 +13,7 @@ fn main() -> anyhow::Result<()> {
         "--resume" => return vmt_local_agent::verification::resume(),
         "--rag" => return vmt_local_agent::verification::rag(),
         "--research" => return vmt_local_agent::verification::research_check(),
+        "--project-context" => return vmt_local_agent::verification::project_context(&selected),
         "--chat" => {
             return vmt_local_agent::verification::model_check(
                 &selected,

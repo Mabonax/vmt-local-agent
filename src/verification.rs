@@ -6,7 +6,7 @@ use crate::{
     types::{ChatEntry, Event, Proposal, Settings},
     workspace::Workspace,
 };
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -726,6 +726,67 @@ pub fn research_check() -> Result<()> {
     }
     journal.finish("completed")?;
     println!("PASS public HTTPS fetch, private URL/query guards and stripped provenance.");
+    Ok(())
+}
+
+/// Real-model acceptance in its own profile; no user's project library is changed.
+pub fn project_context(model: &str) -> Result<()> {
+    let fixture = tempfile::tempdir()?;
+    let project_root = fixture.path().join("source");
+    fs::create_dir_all(&project_root)?;
+    crate::store::configure_data_dir(fixture.path().join("profile"))?;
+    fs::write(
+        project_root.join("overview.md"),
+        "Acceptance codename: LANTERN-73.\nThis is synthetic project context.\n",
+    )?;
+    let mut library = crate::projects::Library::default();
+    library.create("Source acceptance", &project_root.to_string_lossy())?;
+    library.projects[0]
+        .references
+        .push(crate::projects::Reference {
+            id: uuid::Uuid::new_v4().to_string(),
+            kind: "file".into(),
+            title: "Project overview".into(),
+            value: "overview.md".into(),
+        });
+    library.save()?;
+    let settings = Settings {
+        model: model.into(),
+        mode: "chat".into(),
+        ..Default::default()
+    };
+    let (tx, rx) = mpsc::channel();
+    agent::run(settings, project_root.to_string_lossy().into_owned(), vec![ChatEntry {
+        role: "user".into(), content: "According to the attached Project overview, what is the acceptance codename? Return only the codename.".into(), ..Default::default()
+    }], tx, Arc::new(AtomicBool::new(false)), eframe::egui::Context::default());
+    let events: Vec<_> = rx.try_iter().collect();
+    ensure!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Event::Error(_) | Event::Approval(_) | Event::Activity(_))),
+        "Chat source check failed or attempted tools"
+    );
+    let answer = events
+        .iter()
+        .find_map(|e| {
+            if let Event::Final(text) = e {
+                Some(text)
+            } else {
+                None
+            }
+        })
+        .context("No chat answer")?;
+    ensure!(
+        answer.contains("LANTERN-73"),
+        "Attached source not reflected in answer: {answer}"
+    );
+    ensure!(
+        fs::read_to_string(project_root.join("overview.md"))?.contains("LANTERN-73"),
+        "Source changed unexpectedly"
+    );
+    println!(
+        "PASS project context: local {model} answered LANTERN-73 from the attached file in Chat mode, without tool execution."
+    );
     Ok(())
 }
 

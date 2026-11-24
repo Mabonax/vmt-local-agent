@@ -1,4 +1,4 @@
-# VMT Local Agent 0.4.0
+# VMT Local Agent 0.5.0
 
 A native Rust desktop coding workbench for the Ollama models installed on this
 computer. It provides chat, project inspection, reviewed edits, approved commands,
@@ -7,7 +7,7 @@ model quality or full feature parity.
 
 ## Open the app
 
-Start Ollama, then open `dist/VMT Local Agent 0.4.0.exe` or the **VMT Local Agent** desktop
+Start Ollama, then open `dist/VMT Local Agent.exe` (0.5.0) or the **VMT Local Agent** desktop
 shortcut. No OpenAI account or API key is needed for local inference.
 
 1. Choose a model at the top. Start with **qwen3.5:4b** for Agent mode.
@@ -55,10 +55,44 @@ read → approved edit → read-back acceptance task. The installed
 use Chat or the guided Edit file workflow for that model. Model-generated code
 still needs project-specific review and tests.
 
-Default context is 8192 tokens, output limit 2048, and maximum agent steps 12.
-Increase these in Settings only as needed; larger context consumes more GPU/RAM.
+Default context is 8192 tokens, output limit 2048, and the agent budget is 48 steps
+and 15 minutes. Settings → Models & execution supports 1–256 steps and 1–120
+minutes per turn. These are application budgets, not Ollama/model step limits.
+Increasing steps does not increase context size or grant additional permissions.
+Budget checks happen between operations (and while waiting for review); an
+in-flight model request or approved command can finish before the pause takes effect.
+Three consecutive identical tool actions pause a stalled turn before the third
+action executes. A saved **Continue task** checkpoint starts another bounded turn
+with fresh file observations; it never automatically replays approved side effects.
+Increase context separately only as needed; larger context consumes more GPU/RAM.
 Long files, conversations and instructions are bounded. A context error or an
 incomplete model response stops the turn before executing any partial action.
+
+## Projects, chats and sources (0.5.0)
+
+The charcoal desktop shell follows the supplied Codex layout: navigation rail,
+project/chat sidebar, centered conversation/composer, Sources/Activity panel and a
+full settings page. It has no billing or subscription area.
+
+- Create a project with **+** beside Projects and choose its existing source folder.
+  Give it a name and optional project instructions. Existing chats are grouped
+  from their saved workspace folders without moving source files.
+- Start **New chat in project**, search the sidebar or right-click a chat to
+  rename, move, pin or archive it. Restore archived chats in Settings.
+- In Sources, add a permitted project text file, a note or an HTTPS link. File
+  references are reread at the start of Agent and Chat turns; notes and links are
+  supplied as bounded context. Links are not automatically fetched. Binary PDF,
+  image and Office attachment ingestion is not implemented by this reference UI.
+- Moving a chat preserves messages and changes the folder used by future tasks.
+  Its saved task continuation is cleared. Moving a chat out of a project removes
+  its workspace; select Chat mode for conversation without project tools.
+- Project files and reviews remain available; protected files, links/junctions
+  and paths outside the chosen root are still refused. References are data and
+  cannot grant permissions. There is no full-access/automatic-approval switch.
+
+Projects, references and checkpoints share the existing local plaintext profile.
+For a separate test profile use `--data-dir <folder>`; it is not automatically
+merged into the normal profile. See [0.5 verification and limits](DESKTOP_0.5.md).
 
 ## Skills and persistent project memory (0.2.0 preview)
 

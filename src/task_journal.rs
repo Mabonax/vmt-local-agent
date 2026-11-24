@@ -28,6 +28,10 @@ struct Journal {
     started: String,
     state: String,
     events: Vec<JournalEvent>,
+    #[serde(default)]
+    pending_effect: bool,
+    #[serde(default)]
+    uncertain_effects: bool,
 }
 pub struct TaskJournal {
     file: PathBuf,
@@ -47,6 +51,8 @@ impl TaskJournal {
             started: chrono::Utc::now().to_rfc3339(),
             state: "running".into(),
             events: Vec::new(),
+            pending_effect: false,
+            uncertain_effects: false,
         };
         let task = Self {
             file,
@@ -71,6 +77,13 @@ impl TaskJournal {
             step.len() <= 40 && tool.len() <= 80 && outcome.len() <= 60,
             "Task journal metadata exceeds limits"
         );
+        if step == "dispatch" {
+            self.journal.pending_effect = true;
+        }
+        if step == "result" {
+            self.journal.pending_effect = false;
+            self.journal.uncertain_effects |= outcome == "failed-or-uncertain";
+        }
         self.journal.events.push(JournalEvent {
             at: chrono::Utc::now().to_rfc3339(),
             step: step.into(),
@@ -88,7 +101,7 @@ impl TaskJournal {
     }
     pub fn finish(&mut self, state: &str) -> Result<()> {
         ensure!(
-            matches!(state, "completed" | "failed" | "stopped"),
+            matches!(state, "completed" | "failed" | "stopped" | "paused"),
             "Invalid terminal task state"
         );
         self.journal.state = state.into();
@@ -121,7 +134,9 @@ impl Drop for TaskJournal {
 fn summary_state(record: &Journal) -> String {
     let last_dispatch = record.events.iter().rposition(|e| e.step == "dispatch");
     let last_result = record.events.iter().rposition(|e| e.step == "result");
-    let uncertain = last_dispatch.is_some_and(|d| last_result.is_none_or(|r| r < d))
+    let uncertain = record.pending_effect
+        || record.uncertain_effects
+        || last_dispatch.is_some_and(|d| last_result.is_none_or(|r| r < d))
         || record
             .events
             .iter()
@@ -196,6 +211,24 @@ fn recent_scoped(limit: usize, scope: Option<&str>) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn uncertain_effects_survive_long_task_event_retention() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path()).unwrap();
+        let mut task = TaskJournal::start_in(&ws, dir.path().join("journals")).unwrap();
+        task.record("dispatch", "run_command", "uncertain-until-result")
+            .unwrap();
+        task.record("result", "run_command", "failed-or-uncertain")
+            .unwrap();
+        for _ in 0..270 {
+            task.record("policy", "read_file", "allowed").unwrap();
+        }
+        task.finish("paused").unwrap();
+        let loaded: Journal = serde_json::from_slice(&fs::read(&task.file).unwrap()).unwrap();
+        assert_eq!(loaded.events.len(), 256);
+        assert!(summary_state(&loaded).contains("uncertain effects"));
+        assert!(summary_state(&loaded).contains("never replayed"));
+    }
     #[test]
     fn creates_and_updates_atomic_journal() {
         let dir = tempfile::tempdir().unwrap();

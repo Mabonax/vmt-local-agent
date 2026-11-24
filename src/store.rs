@@ -2,7 +2,21 @@ use crate::types::{Session, Settings};
 use anyhow::{Context, Result, ensure};
 use std::{fs, io::Write, path::PathBuf};
 
+static DATA_OVERRIDE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Select a separate local profile before startup, e.g. for disposable UI acceptance.
+pub fn configure_data_dir(path: PathBuf) -> Result<()> {
+    check_local_path(&path)?;
+    fs::create_dir_all(&path)?;
+    DATA_OVERRIDE
+        .set(path.canonicalize()?)
+        .map_err(|_| anyhow::anyhow!("Local profile already selected"))
+}
+
 pub fn data_dir() -> PathBuf {
+    if let Some(path) = DATA_OVERRIDE.get() {
+        return path.clone();
+    }
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|x| PathBuf::from(x).join(".local/share")))
@@ -34,7 +48,7 @@ pub fn check_local_path(path: &std::path::Path) -> Result<()> {
     }
     Ok(())
 }
-fn atomic_json<T: serde::Serialize>(path: PathBuf, value: &T) -> Result<()> {
+pub(crate) fn atomic_json<T: serde::Serialize>(path: PathBuf, value: &T) -> Result<()> {
     check_local_path(&path)?;
     let parent = path.parent().context("Missing settings directory")?;
     fs::create_dir_all(parent)?;
@@ -69,7 +83,14 @@ pub fn load_settings() -> Settings {
         .and_then(|_| fs::metadata(&path).ok())
         .filter(|m| m.is_file() && m.len() <= 16 * 1024)
         .and_then(|_| fs::read(path).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
+        .and_then(|b| {
+            let mut settings: Settings = serde_json::from_slice(&b).ok()?;
+            let raw: serde_json::Value = serde_json::from_slice(&b).ok()?;
+            if raw.get("task_minutes").is_none() && settings.max_steps == 12 {
+                settings.max_steps = 48;
+            }
+            Some(settings)
+        })
         .unwrap_or_default()
 }
 pub fn save_settings(settings: &Settings) -> Result<()> {
@@ -105,6 +126,6 @@ pub fn sessions() -> Vec<Session> {
         }
     }
     result.sort_by(|a, b| b.updated.cmp(&a.updated));
-    result.truncate(100);
+    result.truncate(1000);
     result
 }
