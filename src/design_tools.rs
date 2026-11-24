@@ -358,8 +358,8 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         "Skill changed after action review"
     );
     let colour_base = if ADVANCED_COLOUR.contains(&plan.request.operation.as_str()) {
-        let (base, base_fingerprint) = Registry::load()?
-            .adapter_script("colour-intelligence-v2", "scripts/colour.py")?;
+        let (base, base_fingerprint) =
+            Registry::load()?.adapter_script("colour-intelligence-v2", "scripts/colour.py")?;
         ensure!(
             base_fingerprint == plan.fingerprint,
             "Colour package changed after review"
@@ -381,8 +381,9 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     args.as_object_mut()
         .unwrap()
         .retain(|_, value| !value.is_null());
-    let payload =
-        serde_json::to_vec(&json!({"script":script,"colour_base":colour_base,"args":args,"soffice":plan.runtime.soffice}))?;
+    let payload = serde_json::to_vec(
+        &json!({"script":script,"colour_base":colour_base,"args":args,"soffice":plan.runtime.soffice}),
+    )?;
     ensure!(payload.len() <= 100_000, "Adapter payload exceeds limit");
     let mut command = Command::new(&plan.runtime.python);
     command
