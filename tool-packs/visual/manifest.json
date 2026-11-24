@@ -1,0 +1,81 @@
+{
+  "version": "1.0.0",
+  "runtime": "python3",
+  "entrypoint": "runner.py",
+  "protocol": "stdin-json-v1",
+  "permissions": [],
+  "network": false,
+  "timeout_seconds": 10,
+  "max_input_bytes": 1048576,
+  "max_output_bytes": 1048576,
+  "tools": [
+    {
+      "name": "pdf.render",
+      "description": "Render a single PDF page as PNG",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 940000
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "dpi": {
+            "type": "integer",
+            "minimum": 36,
+            "maximum": 144
+          }
+        },
+        "required": [
+          "content",
+          "page",
+          "dpi"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "image.inspect",
+      "description": "Measure raster dimensions and nonwhite bounds",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 940000
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "image.compare",
+      "description": "Compare equal-size raster images",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "first": {
+            "type": "string",
+            "maxLength": 940000
+          },
+          "second": {
+            "type": "string",
+            "maxLength": 940000
+          }
+        },
+        "required": [
+          "first",
+          "second"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
