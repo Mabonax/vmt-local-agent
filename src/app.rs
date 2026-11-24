@@ -25,6 +25,7 @@ const BORDER: Color32 = Color32::from_rgb(53, 53, 53);
 const AMBER: Color32 = Color32::from_rgb(245, 193, 112);
 
 pub struct Desktop {
+    tool_panel: crate::tool_ui::ToolPanel,
     settings: Settings,
     session: Session,
     saved: Vec<Session>,
@@ -95,6 +96,7 @@ impl Desktop {
             .find(|p| crate::projects::same_root(&p.workspace, &session.workspace))
             .map(|p| p.id.clone());
         let mut app = Self {
+            tool_panel: crate::tool_ui::ToolPanel::new(),
             session,
             saved,
             settings,
@@ -521,6 +523,7 @@ impl Desktop {
                 ("◉", "Models & execution"),
                 ("▱", "Projects & sources"),
                 ("≡", "Skills"),
+                ("▦", "Tools & artifacts"),
                 ("◷", "Archived chats"),
                 ("▣", "Storage"),
             ] {
@@ -1244,7 +1247,9 @@ impl Desktop {
             let width = ui.available_width().min(900.0);
             ui.horizontal(|ui| {ui.add_space(((ui.available_width()-width)/2.0).max(0.0)); ui.vertical(|ui| {
                 ui.set_width(width); ui.add_space(38.0); ui.heading(RichText::new(&self.settings_page).size(31.0)); ui.add_space(36.0);
-                if self.settings_page == "Skills" {
+                if self.settings_page == "Tools & artifacts" {
+                    self.tool_panel.show(ui,&self.ctx,&self.session.workspace,self.settings.read_only,self.settings.web_enabled,self.busy);
+                } else if self.settings_page == "Skills" {
                     self.skills_view(ui);
                 } else if self.settings_page == "Archived chats" {
                     let chats: Vec<_> = self.saved.iter().filter(|c|c.archived).cloned().collect();
@@ -1512,6 +1517,7 @@ impl Desktop {
                 ui.label(RichText::new("Review before continuing").size(23.0).strong());ui.add_space(8.0);
                 ui.label(RichText::new(&approval.title).color(AMBER).strong());
                 match &approval.proposal {
+                    Proposal::ToolPack {plan}=>{ui.label(format!("Reviewed local capability: {}",plan.tool));ui.label("The host binds a single-use approval to these exact arguments. Binary artifacts stay outside the conversation.");},
                     Proposal::File {path,..}=>{ui.label(format!("Project file: {path}"));},
                     Proposal::Command {..}=>{ui.label("This command runs with your Windows account in the selected project. It is not an OS sandbox.");},
                     Proposal::Design {..}=>{ui.label("This runs a reviewed design package with your Windows account. Inspect the exact operation, input hash and output location. Visual review remains separate.");},
