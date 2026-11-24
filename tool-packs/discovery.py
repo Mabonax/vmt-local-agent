@@ -6,6 +6,7 @@ import re
 from dispatch import registry
 from artifact_host import SINGLE
 from system_adapter import SCHEMAS
+from research_adapter import SCHEMAS as RESEARCH_SCHEMAS
 
 DEPENDENCIES={
  "office.docx":("docx",), "office.xlsx":("openpyxl",), "office.pptx":("pptx",),
@@ -66,6 +67,8 @@ def catalog():
         tools[name]={"definition":{"name":name,"description":ALIASES[name],"input_schema":obj(props)},"category":"artifacts","dependencies":()}
     for name,schema in SCHEMAS.items():
         tools[name]={"definition":{"name":name,"description":name.replace("."," ")+" read-only diagnostics or model memory estimate","input_schema":copy.deepcopy(schema)},"category":"system","dependencies":()}
+    for name,schema in RESEARCH_SCHEMAS.items():
+        tools[name]={"definition":{"name":name,"description":"Reviewed HTTPS webpage retrieval" if name=="web.fetch" else "Offline HTML text and link extraction","input_schema":copy.deepcopy(schema)},"category":"research","dependencies":()}
     return tools
 
 def tokens(value):
