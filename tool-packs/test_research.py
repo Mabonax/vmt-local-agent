@@ -27,7 +27,7 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError): PolicyHost(ResearchHost(None,{"example.com"}),{"web.fetch"})
         host=PolicyHost(ResearchHost(None,{"example.com"}),{"web.fetch"},{"web.fetch"})
         args={"url":"https://example.com"}
-        with patch("research_adapter.fetch",return_value={"text":"Example"}) as f:
+        with patch("research_adapter.fetch",return_value={"url":"https://example.com","title":"Example","text":"Example","sha256":"a"*64,"truncated":False,"links":[]}) as f:
             with self.assertRaises(PermissionError): host.call("web.fetch",args)
             f.assert_not_called()
             self.assertTrue(host.call("web.fetch",args,approval=host.approve("web.fetch",args))["ok"])
