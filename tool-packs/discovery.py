@@ -8,6 +8,7 @@ from artifact_host import SINGLE
 from system_adapter import SCHEMAS
 from research_adapter import SCHEMAS as RESEARCH_SCHEMAS
 from evidence import SCHEMAS as EVIDENCE_SCHEMAS
+from knowledge import SCHEMAS as KNOWLEDGE_SCHEMAS
 
 DEPENDENCIES={
  "office.docx":("docx",), "office.xlsx":("openpyxl",), "office.pptx":("pptx",),
@@ -73,6 +74,9 @@ def catalog():
     for name,schema in EVIDENCE_SCHEMAS.items():
         description={"research.sources":"List collected research source metadata","research.find":"Search collected evidence for relevant passages","research.citation":"Retrieve exact cited source passage and offsets"}[name]
         tools[name]={"definition":{"name":name,"description":description,"input_schema":copy.deepcopy(schema)},"category":"research","dependencies":()}
+    for name,schema in KNOWLEDGE_SCHEMAS.items():
+        description={"knowledge.search":"Search local documents policies manuals and knowledge passages","knowledge.documents":"List indexed local documents and revisions","knowledge.citation":"Retrieve exact passage from indexed document","knowledge.statistics":"Inspect local knowledge index statistics"}[name]
+        tools[name]={"definition":{"name":name,"description":description,"input_schema":copy.deepcopy(schema)},"category":"knowledge","dependencies":()}
     return tools
 
 def tokens(value):
