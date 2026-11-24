@@ -319,7 +319,10 @@ impl Request {
                 ),
                 "Unsupported image adjustment"
             );
-            ensure!(self.amount.unwrap_or(100) <= 200, "Adjustment exceeds limit");
+            ensure!(
+                self.amount.unwrap_or(100) <= 200,
+                "Adjustment exceeds limit"
+            );
             if matches!(self.mode.as_deref(), Some("grayscale" | "circle")) {
                 ensure!(self.amount.is_none(), "This mode takes no amount");
             }

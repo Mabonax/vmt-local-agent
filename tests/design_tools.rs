@@ -32,7 +32,11 @@ fn design_actions_cannot_bypass_review_or_change_after_review() {
         .unwrap();
     let vector = source.parent().unwrap().join("vector-graphics");
     fs::create_dir_all(&vector).unwrap();
-    fs::write(vector.join("SKILL.md"), "---\nname: vector-graphics\ndescription: Fixture only\n---\n").unwrap();
+    fs::write(
+        vector.join("SKILL.md"),
+        "---\nname: vector-graphics\ndescription: Fixture only\n---\n",
+    )
+    .unwrap();
     Registry::load()
         .unwrap()
         .approve(portable_skills::inspect_library(source.parent().unwrap()).unwrap())

@@ -98,8 +98,14 @@ pub fn action_schema() -> Value {
     properties.insert("size".into(), json!({"type":"integer"}));
     properties.insert("width".into(), json!({"type":"integer"}));
     properties.insert("height".into(), json!({"type":"integer"}));
-    properties.insert("amount".into(), json!({"type":"integer","minimum":0,"maximum":200}));
-    properties.insert("assets".into(), json!({"type":"array","items":{"type":"string"},"maxItems":4}));
+    properties.insert(
+        "amount".into(),
+        json!({"type":"integer","minimum":0,"maximum":200}),
+    );
+    properties.insert(
+        "assets".into(),
+        json!({"type":"array","items":{"type":"string"},"maxItems":4}),
+    );
     schema["properties"]["args"]["properties"] = Value::Object(properties);
     schema
 }
@@ -149,14 +155,26 @@ fn design_properties() -> Value {
     properties.insert("background".into(), json!({"type":"string"}));
     properties.insert("input".into(), json!({"type":"string"}));
     properties.insert("output".into(), json!({"type":"string"}));
-    properties.insert("count".into(), json!({"type":"integer","minimum":2,"maximum":64}));
-    properties.insert("font".into(), json!({"type":"string","enum":["Arial","Liberation Sans"]}));
+    properties.insert(
+        "count".into(),
+        json!({"type":"integer","minimum":2,"maximum":64}),
+    );
+    properties.insert(
+        "font".into(),
+        json!({"type":"string","enum":["Arial","Liberation Sans"]}),
+    );
     properties.insert("sample".into(), json!({"type":"string"}));
     properties.insert("size".into(), json!({"type":"integer"}));
     properties.insert("width".into(), json!({"type":"integer"}));
     properties.insert("height".into(), json!({"type":"integer"}));
-    properties.insert("amount".into(), json!({"type":"integer","minimum":0,"maximum":200}));
-    properties.insert("assets".into(), json!({"type":"array","items":{"type":"string"},"maxItems":4}));
+    properties.insert(
+        "amount".into(),
+        json!({"type":"integer","minimum":0,"maximum":200}),
+    );
+    properties.insert(
+        "assets".into(),
+        json!({"type":"array","items":{"type":"string"},"maxItems":4}),
+    );
     Value::Object(properties)
 }
 
