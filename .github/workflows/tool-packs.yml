@@ -21,3 +21,4 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -B tool-packs/check_packs.py
+      - run: python -B -m unittest discover -s tool-packs -p test_runtime.py
