@@ -379,6 +379,46 @@ class DesignRunnerTests(unittest.TestCase):
         self.assertTrue(payload['messages'][1]['images'])
         self.assertNotIn('tools',payload)
 
+    def test_visual_review_schema_rejects_untrusted_structure(self):
+        valid = {'summary':'Visible layout issue','findings':[{'category':'spacing','severity':'medium',
+                 'region':[0.1,0.2,0.3,0.4],'observation':'Crowded text','suggestion':'Increase spacing'}]}
+        result = runner.parse_visual_findings(json.dumps(valid))
+        self.assertEqual(result['severity_counts']['medium'],1)
+        self.assertTrue(result['human_acceptance_required'])
+        from copy import deepcopy
+        for field,value in [('region',[0.9,0.2,0.3,0.4]),('severity','execute'),('category','shell')]:
+            invalid = deepcopy(valid)
+            invalid['findings'][0][field] = value
+            with self.assertRaises(ValueError):
+                runner.parse_visual_findings(json.dumps(invalid))
+        invalid = deepcopy(valid)
+        invalid['findings'][0]['command'] = 'not allowed'
+        with self.assertRaises(ValueError):
+            runner.parse_visual_findings(json.dumps(invalid))
+        with self.assertRaises(ValueError):
+            runner.parse_visual_findings('not JSON')
+
+    def test_vision_structured_review_request(self):
+        from unittest.mock import patch, MagicMock
+        from PIL import Image
+        Image.new('RGB',(80,60),'white').save('input',format='PNG')
+        review = {'summary':'No visible issues','findings':[]}
+        replies = [{'models':[{'name':'vision:latest','digest':'fixture'}]},
+                   {'capabilities':['vision'],'details':{'format':'gguf'}},
+                   {'done':True,'message':{'content':json.dumps(review)}}]
+        conn = MagicMock()
+        response = MagicMock()
+        response.status = 200
+        response.read.side_effect = [json.dumps(r).encode() for r in replies]
+        conn.getresponse.return_value = response
+        with patch('http.client.HTTPConnection',return_value=conn):
+            result = runner.vision_inspect({'vision_endpoint':'http://127.0.0.1:11434','model':'vision:latest','mode':'design_review'})
+        self.assertEqual(result['structured_review']['findings'],[])
+        self.assertEqual(result['visual_review'],'ADVISORY_ONLY')
+        payload = json.loads(conn.request.call_args.args[2])
+        self.assertEqual(payload['format']['type'],'object')
+        self.assertNotIn('tools',payload)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
