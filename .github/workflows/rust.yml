@@ -2,7 +2,7 @@ name: Rust validation
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
   pull_request:
 
 permissions:
@@ -18,8 +18,8 @@ jobs:
         run: rustup component add clippy rustfmt
       - name: Check compilation
         run: cargo check --locked
-      - name: Run library regression tests
-        run: cargo test --locked --lib
+      - name: Run library and broker integration tests
+        run: cargo test --locked
       - name: Clippy all targets
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Check formatting

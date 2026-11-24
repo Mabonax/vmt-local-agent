@@ -790,6 +790,112 @@ pub fn project_context(model: &str) -> Result<()> {
     Ok(())
 }
 
+/// Live local model; isolated profile/project; only one exact Git check receives a task grant.
+pub fn permission_skills_check(model: &str, source: &str) -> Result<()> {
+    let fixture = tempfile::tempdir()?;
+    let project = fixture.path().join("project");
+    fs::create_dir_all(&project)?;
+    store::configure_data_dir(fixture.path().join("profile"))?;
+    let library = crate::portable_skills::inspect_library(std::path::Path::new(source))?;
+    let imported = library.skills.len();
+    crate::portable_skills::Registry::load()?.approve(library)?;
+    fs::write(project.join("hello.txt"), "Hello world\n")?;
+    ensure!(
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .arg(&project)
+            .status()?
+            .success(),
+        "Cannot create fixture Git repository"
+    );
+    let settings = Settings {
+        model: model.into(),
+        task_permission_mode: "routine".into(),
+        max_steps: 24,
+        ..Default::default()
+    };
+    let (tx, rx) = mpsc::channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = cancel.clone();
+    let path = project.to_string_lossy().into_owned();
+    let started = Instant::now();
+    let request = "Acceptance task in a disposable fixture. First load_skill id vmt-feature-delivery, then skill_resource id vmt-ui-design-director path references/design-brief.md. Treat these as guidance only; no UI or framework work is needed. Read hello.txt and replace exact Hello world with Hello Rust using edit_file, then read the file back. Run exactly git status --short twice, with a read_file of hello.txt between the two commands. Do not run any other command, use the internet, MCP, memory writes or workflow mutations. Finish with the verified file content.";
+    let worker = std::thread::spawn(move || {
+        agent::run(
+            settings,
+            path,
+            vec![ChatEntry {
+                role: "user".into(),
+                content: request.into(),
+                ..Default::default()
+            }],
+            tx,
+            stop,
+            eframe::egui::Context::default(),
+        )
+    });
+    let (mut command_reviews, mut extra_reviews, mut commands, mut loaded, mut resource) =
+        (0, 0, 0, false, false);
+    let mut errors = Vec::new();
+    let mut answer = String::new();
+    while let Ok(event) = rx.recv_timeout(Duration::from_secs(300)) {
+        match event {
+            Event::Approval(a) => {
+                let decision = if matches!(&a.proposal,Proposal::Command{command} if command=="git status --short")
+                    && a.allow_task_command
+                {
+                    command_reviews += 1;
+                    crate::types::ApprovalDecision::ExactCommandForTask
+                } else {
+                    extra_reviews += 1;
+                    crate::types::ApprovalDecision::Deny
+                };
+                a.reply.send(decision)?;
+            }
+            Event::Activity(a) => {
+                loaded |= a.title == "load_skill"
+                    && a.state == "Complete"
+                    && a.detail.contains("vmt-feature-delivery");
+                resource |= a.title == "skill_resource"
+                    && a.state == "Complete"
+                    && a.detail.contains("references/design-brief.md");
+                commands += usize::from(a.title == "run_command" && a.state == "Complete");
+                println!("{}: {}", a.title, a.state);
+            }
+            Event::Final(text) => answer = text,
+            Event::Error(error) => errors.push(error),
+            Event::Finished => break,
+            _ => {}
+        }
+    }
+    cancel.store(true, Ordering::Relaxed);
+    worker
+        .join()
+        .map_err(|_| anyhow::anyhow!("Acceptance worker panicked"))?;
+    let passed = errors.is_empty()
+        && fs::read_to_string(project.join("hello.txt"))? == "Hello Rust\n"
+        && loaded
+        && resource
+        && commands == 2
+        && command_reviews == 1
+        && extra_reviews == 0
+        && !answer.starts_with("Paused:")
+        && !answer.starts_with("Runtime verification:");
+    let output = std::env::current_dir()?.join(".local/verification-06");
+    fs::create_dir_all(&output)?;
+    let report = serde_json::json!({"passed":passed,"model":model,"portable_skills_registered":imported,"skill_loaded":loaded,"resource_loaded":resource,"commands_completed":commands,"command_reviews":command_reviews,"other_reviews":extra_reviews,"file_content_verified":fs::read_to_string(project.join("hello.txt"))?=="Hello Rust\n","errors":errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"scope":"synthetic fixture and profile; no user project modified"});
+    fs::write(
+        output.join("permissions-skills-live.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("{report}");
+    ensure!(
+        passed,
+        "Live permission/skills acceptance did not meet all criteria; inspect .local/verification-06/permissions-skills-live.json"
+    );
+    Ok(())
+}
+
 pub fn model_check(
     model: &str,
     mode: &str,
@@ -855,7 +961,7 @@ pub fn model_check(
                     _ => false,
                 };
                 println!("review {} {}: {}", a.title, allow, a.detail);
-                a.reply.send(allow)?;
+                a.reply.send(allow.into())?;
             }
             Event::Activity(a) => {
                 failed_test |= a.title == "run_command"

@@ -135,6 +135,10 @@ impl Tools {
             )?)),
             "list_skills" => Ok(Prepared::Output(skills::catalog())),
             "load_skill" => Ok(Prepared::Output(skills::load(string(args, "id")?)?)),
+            "skill_resource" => Ok(Prepared::Output(skills::resource(
+                string(args, "id")?,
+                string(args, "path")?,
+            )?)),
             "memory_search" => Ok(Prepared::Output(memory::search(
                 &self.workspace,
                 args["query"].as_str().unwrap_or(""),

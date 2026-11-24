@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-use vmt_local_agent::{agent, ollama, projects, store, types, workspace};
+use vmt_local_agent::{agent, ollama, portable_skills, projects, skills, store, types, workspace};
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();

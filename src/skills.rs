@@ -5,6 +5,16 @@ use crate::{store, workspace::clip};
 use anyhow::{Result, ensure};
 use std::fs;
 
+pub fn is_builtin(id: &str) -> bool {
+    BUILTINS.iter().any(|(name, _, _)| *name == id)
+}
+pub fn portable_rows() -> Result<Vec<crate::portable_skills::Row>> {
+    Ok(crate::portable_skills::Registry::load()?.rows())
+}
+pub fn resource(id: &str, path: &str) -> Result<String> {
+    crate::portable_skills::Registry::load()?.resource(id, path)
+}
+
 const MAX_SKILL_BYTES: u64 = 16 * 1024;
 const MAX_SKILLS: usize = 32;
 
@@ -85,6 +95,12 @@ pub fn catalog() -> String {
         .iter()
         .map(|(id, description, _)| format!("{id}: {description} [built-in]"))
         .collect();
+    match portable_rows() {
+        Ok(rows) => for row in rows.into_iter().filter(|r|r.status=="enabled") {
+            items.push(format!("{}: {} [reviewed portable guidance]",row.id,clip(&row.description,95)));
+        },
+        Err(_) => items.push("Portable skills unavailable: inspect Skills settings. No unreviewed packages are enabled.".into()),
+    }
     if store::check_local_path(&skill_dir()).is_ok()
         && let Ok(entries) = fs::read_dir(skill_dir())
     {
@@ -106,7 +122,7 @@ pub fn catalog() -> String {
             }
         }
     }
-    clip(&items.join("\n"), 3500)
+    clip(&items.join("\n"), 5000)
 }
 
 pub fn load(id: &str) -> Result<String> {
@@ -115,6 +131,14 @@ pub fn load(id: &str) -> Result<String> {
         return Ok(format!(
             "Skill: {id}\nPurpose: {description}\nGuidance:\n{body}"
         ));
+    }
+    let registry = crate::portable_skills::Registry::load()?;
+    if registry
+        .libraries
+        .iter()
+        .any(|l| l.skills.iter().any(|s| s.metadata.name == id))
+    {
+        return registry.load_skill(id);
     }
     load_user_skill(&skill_dir(), id)
 }

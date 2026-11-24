@@ -57,6 +57,9 @@ pub struct Desktop {
     manage_chat: Option<Session>,
     project_storage_ready: bool,
     source_drawer: bool,
+    skill_rows: Vec<crate::portable_skills::Row>,
+    skill_source_input: String,
+    pending_skill_library: Option<crate::portable_skills::Library>,
 }
 
 impl Desktop {
@@ -123,6 +126,9 @@ impl Desktop {
             manage_chat: None,
             project_storage_ready,
             source_drawer: false,
+            skill_rows: vec![],
+            skill_source_input: String::new(),
+            pending_skill_library: None,
         };
         app.refresh_files();
         app.refresh_models();
@@ -140,6 +146,12 @@ impl Desktop {
             ));
             ctx.request_repaint();
         });
+    }
+    fn refresh_skills(&mut self) {
+        match crate::skills::portable_rows() {
+            Ok(rows) => self.skill_rows = rows,
+            Err(error) => self.error = Some(format!("Could not load skill registry: {error}")),
+        }
     }
     fn refresh_files(&mut self) {
         self.files = Workspace::new(&self.session.workspace)
@@ -506,6 +518,7 @@ impl Desktop {
                 ("⚙", "General"),
                 ("◉", "Models & execution"),
                 ("▱", "Projects & sources"),
+                ("≡", "Skills"),
                 ("◷", "Archived chats"),
                 ("▣", "Storage"),
             ] {
@@ -519,6 +532,9 @@ impl Desktop {
                     .clicked()
                 {
                     self.settings_page = page.into();
+                    if page == "Skills" {
+                        self.refresh_skills();
+                    }
                 }
             }
             return;
@@ -821,9 +837,15 @@ impl Desktop {
             ui.add_space(20.0);
             ui.label(RichText::new("You stay in control").strong());
             ui.label(
-                RichText::new("Edits, commands and web requests pause for your review.")
-                    .color(MUTED)
-                    .size(13.0),
+                RichText::new(
+                    if self.settings.task_permission_mode == "routine" && !self.settings.read_only {
+                        "Small edits use your bounded task grant. Other actions pause for review."
+                    } else {
+                        "Edits, commands and web requests pause for your review."
+                    },
+                )
+                .color(MUTED)
+                .size(13.0),
             );
         }
         egui::ScrollArea::vertical()
@@ -950,15 +972,11 @@ impl Desktop {
                                                     );
                                                 }
                                             });
-                                        ui.label(
-                                            RichText::new(if self.settings.read_only {
-                                                "Read only"
-                                            } else {
-                                                "Review actions"
-                                            })
-                                            .small()
-                                            .color(MUTED),
-                                        );
+                                        if self.settings.read_only {ui.label(RichText::new("Read only").small().color(MUTED));}
+                                        else {egui::ComboBox::from_id_salt("task-permission-mode").selected_text(if self.settings.task_permission_mode=="routine"{"Routine task"}else{"Review actions"}).width(110.0).show_ui(ui,|ui|{
+                                            ui.selectable_value(&mut self.settings.task_permission_mode,"review".into(),"Review each action");
+                                            ui.selectable_value(&mut self.settings.task_permission_mode,"routine".into(),"Routine workspace task");
+                                        }).response.on_hover_text("Routine task: up to 12 small edits / 64 KiB changed text and 20 workflow transitions for 15 minutes. Sensitive files, memory, network, MCP and commands still require review. Grants reset for each turn.");}
                                     });
                                     ui.with_layout(
                                         egui::Layout::right_to_left(egui::Align::Center),
@@ -968,7 +986,7 @@ impl Desktop {
                                                     self.cancel.store(true, Ordering::Relaxed);
                                                     self.status = "Stopping…".into();
                                                     if let Some(a) = self.approval.take() {
-                                                        let _ = a.reply.send(false);
+                                                        let _ = a.reply.send(ApprovalDecision::Deny);
                                                     }
                                                 }
                                                 ui.spinner();
@@ -1070,12 +1088,96 @@ impl Desktop {
             });});
         });
     }
+    fn skills_view(&mut self, ui: &mut egui::Ui) {
+        ui.label("Skills provide workflow guidance. Tools and permissions are managed separately; a discovered skill is not proof that its dependencies can execute.");
+        ui.add_space(16.0);
+        ui.add_enabled_ui(!self.busy, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Choose skills library…").clicked()
+                    && let Some(root) = rfd::FileDialog::new()
+                        .set_title("Choose a skills repository or skills directory")
+                        .pick_folder()
+                {
+                    self.skill_source_input = root.to_string_lossy().into_owned();
+                }
+                if ui.button("Refresh catalogue").clicked() {
+                    self.refresh_skills();
+                }
+            });
+            ui.add(
+                egui::TextEdit::singleline(&mut self.skill_source_input)
+                    .hint_text("Skills repository or directory")
+                    .desired_width(f32::INFINITY),
+            );
+            if ui.button("Inspect source for review").clicked() {
+                match crate::portable_skills::inspect_library(std::path::Path::new(
+                    &self.skill_source_input,
+                )) {
+                    Ok(library) => self.pending_skill_library = Some(library),
+                    Err(e) => self.error = Some(e.to_string()),
+                }
+            }
+        });
+        ui.add_space(15.0);
+        ui.label(
+            RichText::new(format!(
+                "{} registered portable skills",
+                self.skill_rows.len()
+            ))
+            .strong(),
+        );
+        for row in self.skill_rows.clone() {
+            ui.add_space(12.0);
+            egui::Frame::new().fill(PANEL).corner_radius(12).inner_margin(14).show(ui,|ui| {
+                ui.horizontal_wrapped(|ui| {ui.label(RichText::new(&row.id).strong());ui.label(RichText::new(&row.status).color(if row.status=="enabled"{ACCENT}else{AMBER}));ui.label(RichText::new(format!("v{}",row.version)).small());});
+                ui.label(&row.description);ui.label(RichText::new(format!("Licence: {} · Execution: guidance only / tools not certified by registration",row.license)).small().color(MUTED));
+                ui.label(RichText::new(&row.compatibility).small().color(MUTED));
+                ui.horizontal(|ui| {
+                    if ui.button("Inspect instructions").clicked(){match crate::portable_skills::preview(&row.root,&row.id){Ok(text)=>self.preview=Some((format!("Skill · {}",row.id),text)),Err(e)=>self.error=Some(e.to_string())}}
+                    if ui.add_enabled(!self.busy && row.status!="review required",egui::Button::new(if row.status=="enabled"{"Disable"}else{"Enable"})).clicked(){
+                        match crate::portable_skills::Registry::load().and_then(|mut r|r.set_enabled(&row.id,row.status!="enabled")){Ok(_)=>self.refresh_skills(),Err(e)=>self.error=Some(e.to_string())}
+                    }
+                    if ui.add_enabled(!self.busy,egui::Button::new("Review source version")).clicked(){self.skill_source_input=row.root.clone();match crate::portable_skills::inspect_library(std::path::Path::new(&row.root)){Ok(l)=>self.pending_skill_library=Some(l),Err(e)=>self.error=Some(e.to_string())}}
+                });
+                ui.label(RichText::new(format!("Content SHA-256: {}",row.fingerprint)).small().color(MUTED));
+            });
+        }
+        ui.add_space(20.0);
+        egui::CollapsingHeader::new("Built-in and legacy guidance catalogue").show(ui, |ui| {
+            ui.label(RichText::new(crate::skills::catalog()).small());
+        });
+        ui.add_space(12.0);
+        if let Ok(registry) = crate::portable_skills::Registry::load() {
+            for library in registry.libraries {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(&library.root).small().color(MUTED));
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("Unregister source"))
+                        .on_hover_text(
+                            "Removes this app's registration only; original files are preserved.",
+                        )
+                        .clicked()
+                    {
+                        match crate::portable_skills::Registry::load()
+                            .and_then(|mut r| r.remove_library(&library.root))
+                        {
+                            Ok(_) => self.refresh_skills(),
+                            Err(e) => self.error = Some(e.to_string()),
+                        }
+                    }
+                });
+            }
+        }
+    }
+
     fn settings_view(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().id_salt("settings-page").show(ui, |ui| {
             let width = ui.available_width().min(900.0);
             ui.horizontal(|ui| {ui.add_space(((ui.available_width()-width)/2.0).max(0.0)); ui.vertical(|ui| {
                 ui.set_width(width); ui.add_space(38.0); ui.heading(RichText::new(&self.settings_page).size(31.0)); ui.add_space(36.0);
-                if self.settings_page == "Archived chats" {
+                if self.settings_page == "Skills" {
+                    self.skills_view(ui);
+                } else if self.settings_page == "Archived chats" {
                     let chats: Vec<_> = self.saved.iter().filter(|c|c.archived).cloned().collect();
                     if chats.is_empty(){ui.label("No archived chats. Right-click a chat to archive it.");}
                     for chat in chats {ui.horizontal(|ui|{ui.label(&chat.title); if ui.button("Restore").clicked(){let mut chat=chat.clone();chat.archived=false;self.save_chat(chat);}});}
@@ -1093,7 +1195,10 @@ impl Desktop {
                             egui::Frame::new().fill(PANEL).corner_radius(18).stroke(Stroke::new(1.0,BORDER)).inner_margin(20).show(ui,|ui| {
                                 ui.set_width(width-40.0);
                                 ui.checkbox(&mut self.settings.read_only,"Read-only workspace");ui.label(RichText::new("Inspect files without making changes or running commands.").color(MUTED));ui.add_space(14.0);ui.separator();ui.add_space(14.0);
-                                ui.label(RichText::new("Review each action").strong());ui.label(RichText::new("Edits, commands, external tools and internet requests always pause for your approval. Longer tasks do not change this.").color(MUTED));
+                                ui.label(RichText::new("Task permissions").strong());
+                                egui::ComboBox::from_id_salt("settings-permission-mode").selected_text(if self.settings.task_permission_mode=="routine"{"Routine workspace task"}else{"Review each action"}).show_ui(ui,|ui|{ui.selectable_value(&mut self.settings.task_permission_mode,"review".into(),"Review each action");ui.selectable_value(&mut self.settings.task_permission_mode,"routine".into(),"Routine workspace task");});
+                                ui.label(RichText::new("Sending in Routine mode grants this workspace up to 12 small edits, 64 KiB of changed text and 20 workflow transitions for 15 minutes. Large edits and sensitive paths still pause for review. Stop revokes the running task; continuation starts fresh grants.").color(MUTED));
+                                ui.add_space(10.0);ui.label(RichText::new("Commands are reviewed first. Eligible test/check commands offer an explicit exact-command grant for up to four uses. Network requests, MCP, memory and indexing always need individual review.").color(MUTED));
                                 ui.add_space(14.0);ui.separator();ui.add_space(14.0);ui.checkbox(&mut self.settings.web_enabled,"Enable reviewed internet tools");ui.label(RichText::new("Links in Sources stay offline until an explicit reviewed fetch. Web search sends the approved query to Ollama's search service when configured.").color(MUTED));
                             });
                             ui.add_space(30.0);ui.label(RichText::new("General").strong());ui.add_space(12.0);
@@ -1118,6 +1223,35 @@ impl Desktop {
     }
 
     fn organization_dialogs(&mut self, ctx: &egui::Context) {
+        if let Some(mut library) = self.pending_skill_library.clone() {
+            let mut open = true;
+            let mut approve = false;
+            egui::Window::new("Review portable skills source").open(&mut open).default_size([720.0,560.0]).show(ctx,|ui| {
+                ui.label(RichText::new(&library.root).small());
+                ui.label("Approval pins these exact versions. Later content changes block loading until reviewed again. No scripts execute, no packages install and declared allowed-tools never grant runtime permissions.");
+                egui::ScrollArea::vertical().max_height(370.0).show(ui,|ui|{for skill in &mut library.skills {
+                    ui.checkbox(&mut skill.enabled,format!("{} — {}",skill.metadata.name,skill.metadata.description));
+                    egui::CollapsingHeader::new(format!("Inspect {}",skill.metadata.name)).id_salt(&skill.metadata.name).show(ui,|ui| {
+                        match crate::portable_skills::preview(&library.root,&skill.metadata.name){Ok(text)=>{ui.label(RichText::new(text).small());},Err(e)=>{ui.label(e.to_string());}}
+                    });
+                }});
+                if ui.add_enabled(!self.busy,egui::Button::new("Approve selected skill versions")).clicked(){approve=true;}
+            });
+            if approve {
+                match crate::portable_skills::Registry::load().and_then(|mut r| r.approve(library))
+                {
+                    Ok(_) => {
+                        self.pending_skill_library = None;
+                        self.refresh_skills();
+                    }
+                    Err(e) => self.error = Some(e.to_string()),
+                }
+            } else if open {
+                self.pending_skill_library = Some(library);
+            } else {
+                self.pending_skill_library = None;
+            }
+        }
         if let Some(mut project) = self.project_editor.clone() {
             let mut open = true;
             let mut save = false;
@@ -1330,9 +1464,10 @@ impl Desktop {
                     });
                 });
                 ui.add_space(15.0);ui.horizontal(|ui| {
-                    if ui.add_sized([120.0,36.0],egui::Button::new("Deny")).clicked(){decision=Some(false);}
+                    if ui.add_sized([120.0,36.0],egui::Button::new("Deny")).clicked(){decision=Some(ApprovalDecision::Deny);}
+                    if approval.allow_task_command && ui.button("Approve exact command for this task").on_hover_text("Up to 4 uses of this exact test/check command, within 15 minutes and this workspace. It executes current project code with your Windows privileges.").clicked(){decision=Some(ApprovalDecision::ExactCommandForTask);}
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
-                        if ui.add_sized([170.0,36.0],egui::Button::new(RichText::new("Approve once").color(BG).strong()).fill(ACCENT)).clicked(){decision=Some(true);}
+                        if ui.add_sized([170.0,36.0],egui::Button::new(RichText::new("Approve once").color(BG).strong()).fill(ACCENT)).clicked(){decision=Some(ApprovalDecision::Once);}
                     });
                 });
             });
@@ -1341,7 +1476,7 @@ impl Desktop {
             && let Some(approval) = self.approval.take()
         {
             let _ = approval.reply.send(answer);
-            self.status = if answer {
+            self.status = if answer != ApprovalDecision::Deny {
                 "Running approved action"
             } else {
                 "Action denied"
@@ -1479,7 +1614,7 @@ impl eframe::App for Desktop {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.cancel.store(true, Ordering::Relaxed);
         if let Some(a) = self.approval.take() {
-            let _ = a.reply.send(false);
+            let _ = a.reply.send(ApprovalDecision::Deny);
         }
         self.persist();
     }

@@ -29,8 +29,9 @@ impl Capability {
 pub fn classify(tool: &str) -> Result<Capability> {
     Ok(match tool {
         "list_files" | "read_file" | "search_text" | "list_skills" | "load_skill"
-        | "memory_search" | "knowledge_search" | "list_workflows" | "workflow_status"
-        | "mcp_servers" | "mcp_schema" | "research_sources" | "task_history" => Capability::Read,
+        | "skill_resource" | "memory_search" | "knowledge_search" | "list_workflows"
+        | "workflow_status" | "mcp_servers" | "mcp_schema" | "research_sources"
+        | "task_history" => Capability::Read,
         "write_file" | "edit_file" => Capability::ProjectWrite,
         "run_command" => Capability::Shell,
         "web_search" | "web_fetch" => Capability::Internet,

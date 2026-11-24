@@ -59,6 +59,7 @@ pub struct Settings {
     pub web_enabled: bool,
     pub protocol: String,
     pub mode: String,
+    pub task_permission_mode: String,
     #[serde(skip)]
     pub edit_file: Option<String>,
 }
@@ -76,6 +77,7 @@ impl Default for Settings {
             web_enabled: false,
             protocol: "auto".into(),
             mode: "agent".into(),
+            task_permission_mode: "review".into(),
             edit_file: None,
         }
     }
@@ -132,7 +134,20 @@ pub struct Approval {
     pub title: String,
     pub detail: String,
     pub proposal: Proposal,
-    pub reply: Sender<bool>,
+    pub reply: Sender<ApprovalDecision>,
+    pub allow_task_command: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApprovalDecision {
+    Deny,
+    Once,
+    ExactCommandForTask,
+}
+impl From<bool> for ApprovalDecision {
+    fn from(value: bool) -> Self {
+        if value { Self::Once } else { Self::Deny }
+    }
 }
 
 #[derive(Clone, Debug)]
