@@ -2,8 +2,8 @@
 from dispatch import dispatch
 
 PRODUCERS={"office.docx":"docx","office.xlsx":"xlsx","office.pptx":"pptx",
-           "pdf.generate":"pdf","pdf.merge":"pdf","pdf.split":"pdf"}
-SINGLE={"pdf.inspect","pdf.extract_text","pdf.split","artifact.inspect","artifact.hash"}
+           "pdf.generate":"pdf","pdf.merge":"pdf","pdf.split":"pdf","pdf.render":"png"}
+SINGLE={"pdf.inspect","pdf.extract_text","pdf.split","artifact.inspect","artifact.hash","pdf.render","image.inspect"}
 
 class ArtifactHost:
     def __init__(self, store):
@@ -23,7 +23,13 @@ class ArtifactHost:
             if "content" in args or "artifact_id" not in args: raise ValueError("Use artifact reference")
             artifact_id=args.pop("artifact_id")
             if name.startswith("pdf.") and self.store.metadata(artifact_id)["extension"]!="pdf": raise ValueError("Expected PDF")
+            if name=="image.inspect" and self.store.metadata(artifact_id)["extension"] not in ("png","jpg"): raise ValueError("Expected image")
             args["content"]=self.store.retrieve(artifact_id)
+        elif name=="image.compare":
+            if set(args)!={"first_id","second_id"}: raise ValueError("Use image references")
+            ids=[args["first_id"],args["second_id"]]
+            if any(self.store.metadata(i)["extension"] not in ("png","jpg") for i in ids): raise ValueError("Expected images")
+            args={"first":self.store.retrieve(ids[0]),"second":self.store.retrieve(ids[1])}
         elif name=="pdf.merge":
             if set(args)!={"artifact_ids"}: raise ValueError("Use artifact references")
             ids=args["artifact_ids"]
