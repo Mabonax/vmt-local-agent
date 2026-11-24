@@ -7,6 +7,7 @@ from dispatch import registry
 from artifact_host import SINGLE
 from system_adapter import SCHEMAS
 from research_adapter import SCHEMAS as RESEARCH_SCHEMAS
+from evidence import SCHEMAS as EVIDENCE_SCHEMAS
 
 DEPENDENCIES={
  "office.docx":("docx",), "office.xlsx":("openpyxl",), "office.pptx":("pptx",),
@@ -69,6 +70,9 @@ def catalog():
         tools[name]={"definition":{"name":name,"description":name.replace("."," ")+" read-only diagnostics or model memory estimate","input_schema":copy.deepcopy(schema)},"category":"system","dependencies":()}
     for name,schema in RESEARCH_SCHEMAS.items():
         tools[name]={"definition":{"name":name,"description":"Reviewed HTTPS webpage retrieval" if name=="web.fetch" else "Offline HTML text and link extraction","input_schema":copy.deepcopy(schema)},"category":"research","dependencies":()}
+    for name,schema in EVIDENCE_SCHEMAS.items():
+        description={"research.sources":"List collected research source metadata","research.find":"Search collected evidence for relevant passages","research.citation":"Retrieve exact cited source passage and offsets"}[name]
+        tools[name]={"definition":{"name":name,"description":description,"input_schema":copy.deepcopy(schema)},"category":"research","dependencies":()}
     return tools
 
 def tokens(value):
