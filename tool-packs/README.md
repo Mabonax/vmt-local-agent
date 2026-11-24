@@ -33,3 +33,6 @@ For a call, use `python tool-packs/dispatch.py call math.calculate` and pass {"o
 The registry is explicitly allowlisted and validates the supported schema subset. Only trusted checked-in pure tools are eligible. Output limits are checked after buffering; this is not process isolation or a hard memory cap.
 
 workspace_adapter.py exposes metadata, SHA-256 and bounded directory listing through inspect(root, relative, operation). Root is supplied by the trusted caller, never the model. It is not registered in the pure dispatcher. It rejects common sensitive names, traversal and links but is not a complete secret detector or race-proof sandbox. Integrate only behind the existing workspace resolver and policy broker. No writes or shell calls are provided.
+
+## Repository intelligence
+Four pure static tools: project.detect, code.metrics, code.dependencies, python.imports. Dependency extraction is limited to top-level npm, Composer and Cargo declarations; no lockfile resolution, vulnerability assessment or execution. Requires Python 3.11+ (tomllib). Git operations remain outside the pure dispatcher and must use the existing reviewed command broker.
