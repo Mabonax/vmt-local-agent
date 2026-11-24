@@ -1,0 +1,108 @@
+{
+  "version": "1.0.0",
+  "runtime": "python3",
+  "entrypoint": "runner.py",
+  "protocol": "stdin-json-v1",
+  "permissions": [],
+  "network": false,
+  "timeout_seconds": 5,
+  "max_input_bytes": 1048576,
+  "max_output_bytes": 1048576,
+  "tools": [
+    {
+      "name": "text.sha256",
+      "description": "Hash UTF-8 text",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "text.diff",
+      "description": "Compare text lines",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "before": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "after": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "csv.profile",
+      "description": "Profile CSV rows and missing cells",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "python.symbols",
+      "description": "Parse Python symbols without executing code",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "text.find",
+      "description": "Case-insensitive literal text search",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "text",
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
