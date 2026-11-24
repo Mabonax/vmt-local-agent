@@ -5,6 +5,53 @@ computer. It provides chat, project inspection, reviewed edits, approved command
 and optional internet tools. This is a first working release, not a claim of Codex
 model quality or full feature parity.
 
+## Unified local integration
+
+The `codex/local-agent-unified-integration` branch incorporates remote tool-pack
+commit `58d5f6184baa7927ef7da1db578785a3fe46c4f3` into the existing desktop,
+skills, memory, MCP and review broker. It exposes **57 Python host capabilities**
+(32 execution tools plus 25 host operations), alongside the existing native tools.
+This is local development, not a published release.
+
+Settings → **Tools & artifacts** provides dependency inventory, bounded discovery,
+exact action review, fixed PDF workflows, artifact opening/saving/previews,
+revision comparisons and persistent knowledge collections. The advanced action
+form also supports system diagnostics, model memory estimates and research
+citations using their displayed schemas. Every pack execution requires review;
+Routine task grants do not approve pack operations. Read-only mode blocks them.
+
+The verified Windows tool interpreter is an isolated Python 3.13 environment at
+`%LOCALAPPDATA%\VMT\LocalAgent\tool-python-venv\Scripts\python.exe`.
+For a new installation, explicitly create and install it, then configure the
+reviewed executable paths (no installation occurs at application startup):
+
+```powershell
+$toolEnv = Join-Path $env:LOCALAPPDATA 'VMT\LocalAgent\tool-python-venv'
+py -3.13 -m venv $toolEnv
+& "$toolEnv\Scripts\python.exe" -m pip install -r tool-packs/office/requirements.txt -r tool-packs/pdf/requirements.txt -r tool-packs/visual/requirements.txt psutil==7.0.0
+./build.ps1 -Action build -Release
+./target/release/vmt-agent-check.exe --tool-pack-configure "$toolEnv\Scripts\python.exe" 'C:/Program Files/LibreOffice/program/soffice.exe'
+./target/release/vmt-local-agent.exe
+```
+
+Use `none` instead of the LibreOffice path when unavailable. Select a workspace
+in the desktop before refreshing capabilities. Reconfigure after a code or
+interpreter update: fingerprints intentionally reject drift. On Linux, create a
+Python venv outside the model's workspace, build with Cargo, and configure absolute
+Python/LibreOffice paths in the same way. Linux execution has not been accepted
+on this Windows workstation.
+
+Current checks: **142 automated test executions pass**, plus eight integrated
+acceptance scenarios and two actual review/cancellation checks. Qwen 3.5 4B
+completed native document/workflow calls and cited knowledge retrieval at a
+16,384-token context. Generated report prose still needs factual review; two
+JSON fallback trials failed safely. Do not interpret file creation or rendering
+as professional document acceptance. OS filesystem/network sandboxing, reliable
+complex autonomous authoring, and real Craft MCP acceptance remain outstanding.
+
+See the [integration audit](docs/audits/LOCAL_AGENT_UNIFIED_INTEGRATION.md) for
+commands, evidence, dependency decisions, security boundaries and limitations.
+
 ## Open the app
 
 Start Ollama, then open `dist/VMT Local Agent 0.6.2.exe` or the **VMT Local Agent** desktop
