@@ -92,7 +92,14 @@ fn runtime() -> Result<Runtime> {
     Ok(runtime)
 }
 pub fn status(id: &str) -> &'static str {
-    if ["colour-intelligence", "colour-intelligence-v2", "professional-document-design"].contains(&id) {
+    if [
+        "colour-intelligence",
+        "colour-intelligence-v2",
+        "professional-document-design",
+        "professional-document-design-v2",
+    ]
+    .contains(&id)
+    {
         if store::data_dir().join("design-runtime.json").is_file() {
             "Reviewed design adapter configured · each execution requires approval"
         } else {
@@ -105,18 +112,29 @@ pub fn status(id: &str) -> &'static str {
 pub fn integration_note(id: &str) -> &'static str {
     if id == "colour-intelligence-v2" {
         "\nUse design_tool operations repair, gradient, categorical, simulate, system and distance. Do not execute skill scripts via shell. Each operation requires review. V1 palette/contrast/extract remain separate. Repair targets 4.5:1; simulation and distance do not certify accessibility."
+    } else if id == "professional-document-design-v2" {
+        "\nUse design_tool compose_v2 with reviewed JSON and a new DOCX/PPTX path. Use render separately for structural checks and PNG review. Do not run scripts via shell. Visual review remains pending."
     } else if ["colour-intelligence", "professional-document-design"].contains(&id) {
         "\nDesktop integration: use the registered design_tool with operation palette/contrast/extract for colour-intelligence or compose/render for professional-document-design. Do not use arbitrary shell commands to run these scripts. Outputs must be new project-relative paths. Rendering produces visual_review PENDING; inspect every PNG before claiming visual acceptance. Tool execution requires independent action review."
     } else {
         ""
     }
 }
-const ADVANCED_COLOUR: &[&str] = &["repair", "gradient", "categorical", "simulate", "system", "distance"];
+const ADVANCED_COLOUR: &[&str] = &[
+    "repair",
+    "gradient",
+    "categorical",
+    "simulate",
+    "system",
+    "distance",
+];
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
         if ADVANCED_COLOUR.contains(&self.operation.as_str()) {
             ("colour-intelligence-v2", "scripts/advanced.py")
+        } else if self.operation == "compose_v2" {
+            ("professional-document-design-v2", "scripts/v2.py")
         } else if ["palette", "contrast", "extract"].contains(&self.operation.as_str()) {
             ("colour-intelligence", "scripts/colour.py")
         } else {
@@ -127,7 +145,8 @@ impl Request {
         let operation = self.operation.as_str();
         ensure!(
             ["palette", "contrast", "extract", "compose", "render"].contains(&operation)
-                || ADVANCED_COLOUR.contains(&operation),
+                || ADVANCED_COLOUR.contains(&operation)
+                || operation == "compose_v2",
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -186,16 +205,28 @@ impl Request {
             colour(self.seed.as_deref())?;
         }
         if operation == "categorical" {
-            ensure!((2..=12).contains(&self.count.unwrap_or(6)), "Category count must be 2-12");
+            ensure!(
+                (2..=12).contains(&self.count.unwrap_or(6)),
+                "Category count must be 2-12"
+            );
         }
         if operation == "gradient" {
-            ensure!((2..=64).contains(&self.count.unwrap_or(7)), "Gradient count must be 2-64");
+            ensure!(
+                (2..=64).contains(&self.count.unwrap_or(7)),
+                "Gradient count must be 2-64"
+            );
         }
         if operation == "simulate" {
-            ensure!(matches!(self.mode.as_deref(), Some("protan" | "deutan" | "tritan")), "Unsupported simulation");
+            ensure!(
+                matches!(self.mode.as_deref(), Some("protan" | "deutan" | "tritan")),
+                "Unsupported simulation"
+            );
         }
         if operation == "system" {
-            ensure!(["light", "dark"].contains(&self.theme.as_deref().unwrap_or("light")), "Unsupported theme");
+            ensure!(
+                ["light", "dark"].contains(&self.theme.as_deref().unwrap_or("light")),
+                "Unsupported theme"
+            );
         }
         if operation == "extract" {
             ensure!(
@@ -203,7 +234,7 @@ impl Request {
                 "Extraction count must be 2-16"
             );
         }
-        if ["extract", "compose", "render"].contains(&operation) {
+        if ["extract", "compose", "compose_v2", "render"].contains(&operation) {
             let input = self.input.as_deref().context("Input path is required")?;
             ensure!(input.len() <= 240, "Input path too long");
             workspace.resolve(input, false)?;
@@ -213,7 +244,7 @@ impl Request {
                 .unwrap_or("")
                 .to_ascii_lowercase();
             let extensions: &[&str] = match operation {
-                "compose" => &["json"],
+                "compose" | "compose_v2" => &["json"],
                 "extract" => &["png", "jpg", "jpeg", "webp"],
                 _ => &["docx", "pptx"],
             };
@@ -222,7 +253,7 @@ impl Request {
                 "Unsupported input format"
             );
         }
-        if ["compose", "render"].contains(&operation) {
+        if ["compose", "compose_v2", "render"].contains(&operation) {
             let output = self.output.as_deref().context("Output path is required")?;
             ensure!(
                 !output.is_empty()
@@ -238,7 +269,7 @@ impl Request {
                 !path.exists() && path.parent().is_some_and(Path::is_dir),
                 "Output must be new and its parent must exist"
             );
-            if operation == "compose" {
+            if matches!(operation, "compose" | "compose_v2") {
                 ensure!(
                     matches!(
                         path.extension()
@@ -259,7 +290,7 @@ impl Request {
             .map(|input| {
                 bounded(
                     &workspace.resolve(input, false)?,
-                    if self.operation == "compose" {
+                    if matches!(self.operation.as_str(), "compose" | "compose_v2") {
                         64 * 1024
                     } else {
                         16 * 1024 * 1024
@@ -329,7 +360,10 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     let colour_base = if ADVANCED_COLOUR.contains(&plan.request.operation.as_str()) {
         let (base, base_fingerprint) = Registry::load()?
             .adapter_script("colour-intelligence-v2", "scripts/colour.py")?;
-        ensure!(base_fingerprint == plan.fingerprint, "Colour package changed after review");
+        ensure!(
+            base_fingerprint == plan.fingerprint,
+            "Colour package changed after review"
+        );
         Some(base)
     } else {
         None
@@ -431,7 +465,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     if let Some(output) = &plan.request.output {
         plan.request.validate(workspace)?;
         let destination = workspace.resolve(output, true)?;
-        if plan.request.operation == "compose" {
+        if matches!(plan.request.operation.as_str(), "compose" | "compose_v2") {
             let suffix = Path::new(output)
                 .extension()
                 .context("Missing output extension")?

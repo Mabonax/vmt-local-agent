@@ -14,6 +14,7 @@ ARCHIVES = {
 }
 
 
+DOCUMENT_V2 = {'professional-document-design-v2': 'a83e33b35a0ba7d30b6099fb13078f141d58e31a9439c17cfe9ec4dbe8744e28'}
 COLOUR_V2 = {'colour-intelligence-v2': '20d4fad76e54bfb54643fb08c2273fb9b0ba544eb9da757a927f436ebc4ff381'}
 
 
@@ -57,12 +58,15 @@ def main():
     parser.add_argument('--profile', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'VMT/LocalAgent')
     parser.add_argument('--install-dependencies', action='store_true', help='Explicitly permit pip downloads into the private venv')
     parser.add_argument('--colour-v2', action='store_true', help='Install the reviewed advanced colour package alongside V1')
+    parser.add_argument('--document-v2', action='store_true', help='Install the reviewed V2 document package alongside V1')
     args = parser.parse_args()
     profile = args.profile.absolute()
     packages = profile / 'skill-packages/design-2026-11-24'
     unpack(args.archives, packages)
     if args.colour_v2:
         unpack(args.archives, packages, COLOUR_V2)
+    if args.document_v2:
+        unpack(args.archives, packages, DOCUMENT_V2)
     environment = profile / 'design-runtime/venv'
     python = environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     if args.install_dependencies:

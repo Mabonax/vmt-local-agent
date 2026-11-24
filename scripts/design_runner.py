@@ -5,6 +5,7 @@ No project path is accepted by this worker. The broker publishes fresh outputs.
 This process runs with the user's privileges; validation is not an OS sandbox.
 """
 import hashlib
+import os
 import json
 from pathlib import Path
 import re
@@ -21,8 +22,8 @@ def text(value, limit=4000):
     return value
 
 
-def content(data, slides):
-    if not isinstance(data, dict) or set(data) - {'title', 'subtitle', 'sections'}:
+def content(data, slides, v2=False):
+    if not isinstance(data, dict) or set(data) - ({'title', 'subtitle', 'sections', 'design_system'} if v2 else {'title', 'subtitle', 'sections'}):
         raise ValueError('Unsupported document fields')
     text(data['title'], 75 if slides else 200)
     if not data['title'].strip():
@@ -42,15 +43,17 @@ def content(data, slides):
             if not isinstance(values, list) or len(values) > 100:
                 raise ValueError('Invalid paragraph/bullet list')
             for value in values:
-                text(value, 180 if slides else 4000)
+                text(value, 180 if slides and not v2 else 4000)
                 total += len(value)
             lines.extend(values)
         rows = section.get('table', [])
         if not isinstance(rows, list) or len(rows) > 100:
             raise ValueError('Invalid table')
-        if slides and rows:
+        if slides and rows and not v2:
             raise ValueError('Baseline slides do not support tables')
         if rows:
+            if slides and v2 and len(rows) < 2:
+                raise ValueError('Slide table requires a header and at least one data row')
             width = len(rows[0])
             if not 1 <= width <= 8:
                 raise ValueError('Table must have 1-8 columns')
@@ -60,10 +63,95 @@ def content(data, slides):
                 for value in row:
                     text(value, 1000)
                     total += len(value)
-        if slides and (len(lines) > 5 or sum(map(len, lines)) > 450):
+        if slides and not v2 and (len(lines) > 5 or sum(map(len, lines)) > 450):
             raise ValueError('Dense slide: split content')
     if total > 30000:
         raise ValueError('Document text exceeds 30000 characters')
+
+
+def design_system(data, slides):
+    """Only approved scalar design tokens; no executable paths or unknown fields."""
+    raw = data.get('design_system', {})
+    allowed = {'version', 'colour', 'typography', 'layout', 'quality'}
+    if not isinstance(raw, dict) or set(raw) - allowed:
+        raise ValueError('Unknown design system fields')
+    if raw.get('version', '2.0') != '2.0':
+        raise ValueError('Unsupported design system version')
+    rules = {
+        'colour': {'primary', 'accent', 'background', 'text', 'surface', 'muted_text', 'on_primary', 'on_accent', 'brand_seed'},
+        'typography': {'font', 'body_size', 'slide_body_size'},
+        'layout': {'page_margin_mm'},
+        'quality': {'maximum_repair_attempts'},
+    }
+    for group, keys in rules.items():
+        section = raw.get(group, {})
+        if not isinstance(section, dict) or set(section) - keys:
+            raise ValueError('Unknown design token')
+    for colour in raw.get('colour', {}).values():
+        if not isinstance(colour, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', colour):
+            raise ValueError('Invalid colour token')
+    def number(group, key, default, lo, hi):
+        value = raw.get(group, {}).get(key, default)
+        if type(value) not in (int, float) or not lo <= value <= hi:
+            raise ValueError('Design number outside supported range')
+        return value
+    number('typography', 'body_size', 11, 10, 16)
+    number('typography', 'slide_body_size', 23, 18, 28)
+    number('layout', 'page_margin_mm', 22, 15, 30)
+    attempts = number('quality', 'maximum_repair_attempts', 3, 1, 3)
+    if type(attempts) is not int:
+        raise ValueError('Repair attempts must be an integer')
+    typography = raw.setdefault('typography', {})
+    typography.setdefault('font', 'Arial' if os.name == 'nt' else 'Liberation Sans')
+    if typography['font'] not in ('Arial', 'Liberation Sans'):
+        raise ValueError('Font is not in the reviewed font allowlist')
+    if not slides and raw.get('colour', {}).get('background', '#FFFFFF').upper() != '#FFFFFF':
+        raise ValueError('V2 Word currently supports white page backgrounds only')
+    data['design_system'] = raw
+    return raw
+
+
+def reviewed_font(name):
+    if name not in ('Arial', 'Liberation Sans'):
+        raise ValueError('Font is not in the reviewed font allowlist')
+    if os.name == 'nt':
+        root = Path(os.environ['SystemRoot']) / 'Fonts'
+        # Match the actual font used by the native Office object.
+        if name != 'Arial':
+            raise ValueError('Use Arial for the Windows design runtime')
+        path = root / 'arial.ttf'
+        if not path.is_file():
+            raise ValueError('Required Arial font is unavailable')
+        return str(path)
+    return subprocess.check_output(['fc-match', '-f', '%{file}', name], text=True, timeout=10).strip()
+
+
+def structural_review(pdf):
+    # Geometric evidence, not aesthetic or accessibility certification.
+    findings = []
+    pages = []
+    for index, page in enumerate(pdf):
+        spans = [s for b in page.get_text('dict')['blocks'] if 'lines' in b
+                 for line in b['lines'] for s in line['spans'] if s['text'].strip()]
+        pages.append({'page': index + 1, 'text_spans': len(spans)})
+        if len(spans) > 1000:
+            findings.append({'page': index + 1, 'type': 'inspection_limit'})
+            continue
+        if not spans:
+            findings.append({'page': index + 1, 'type': 'no_extractable_text'})
+        import fitz
+        for i, span in enumerate(spans):
+            a = fitz.Rect(span['bbox'])
+            if a.x0 < -0.5 or a.y0 < -0.5 or a.x1 > page.rect.width + 0.5 or a.y1 > page.rect.height + 0.5:
+                findings.append({'page': index + 1, 'type': 'text_out_of_bounds'})
+            for other in spans[i + 1:]:
+                b = fitz.Rect(other['bbox'])
+                area = min(a.get_area(), b.get_area())
+                if area > 0 and (a & b).get_area() > 0.35 * area:
+                    findings.append({'page': index + 1, 'type': 'possible_text_overlap'})
+                if len(findings) >= 100:
+                    return {'pages': pages, 'issues': findings, 'structural_status': 'REVIEW_REQUIRED', 'truncated': True}
+    return {'pages': pages, 'issues': findings, 'structural_status': 'PASS' if not findings else 'REVIEW_REQUIRED'}
 
 
 def validate_office(path):
@@ -132,6 +220,36 @@ def run(request):
             image.load()
             image.save('validated.png')
         return namespace['extract']('validated.png', args.get('count', 6))
+    if operation == 'compose_v2':
+        data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
+        slides = args['output'].lower().endswith('.pptx')
+        content(data, slides, v2=True)
+        design_system(data, slides)
+        exec(compile(request['script'], '<reviewed-document-v2>', 'exec'), namespace)
+        namespace['fontfile'] = reviewed_font
+        t = namespace['theme'](data)
+        output = Path('artifact.pptx' if slides else 'artifact.docx')
+        if slides:
+            namespace['slides'](data, output, t)
+            from pptx import Presentation
+            from pptx.dml.color import RGBColor
+            deck = Presentation(output)
+            if len(deck.slides) > 40:
+                raise ValueError('V2 slide count exceeds 40')
+            # The upstream table fills are fixed light colours. Apply the chosen
+            # semantic background so dark themes do not create light-on-white text.
+            for slide in deck.slides:
+                for shape in slide.shapes:
+                    if shape.has_table:
+                        for row in shape.table.rows:
+                            for cell in row.cells:
+                                cell.fill.solid()
+                                cell.fill.fore_color.rgb = RGBColor.from_string(t['colour']['background'][1:])
+            deck.save(output)
+        else:
+            namespace['word'](data, output, t)
+        validate_office(output)
+        return {'created': args['output'], 'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'visual_review': 'PENDING', 'structural_status': 'PENDING', 'limitation': 'Run render next; no automatic repair in this adapter increment.'}
     if operation == 'compose':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         slides = args['output'].lower().endswith('.pptx')
@@ -189,7 +307,7 @@ def run(request):
             if page.rect.width * page.rect.height > 2_000_000:
                 raise ValueError('Page dimensions exceed limits')
             page.get_pixmap(matrix=fitz.Matrix(1.7, 1.7)).save(review / f'page-{index+1:03}.png')
-        result = {'artifact_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'pages': len(pdf), 'render_status': 'PASS', 'visual_review': 'PENDING', 'review_directory': args['output']}
+        result = {'artifact_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'pages': len(pdf), 'render_status': 'PASS', 'visual_review': 'PENDING', 'review_directory': args['output'], **{'structural_review': structural_review(pdf)}}
     (review / 'review.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
     return result
 

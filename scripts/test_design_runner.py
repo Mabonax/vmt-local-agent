@@ -68,6 +68,26 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.run({'colour_base': base, 'script': '', 'args': {'operation': 'system', 'seed': '#123456'}})
 
+    def test_v2_design_system_and_dense_content(self):
+        data = {'title': 'T', 'sections': [{'heading': 'H', 'paragraphs': ['x' * 300] * 6, 'table': [['a'], ['b']]}],
+                'design_system': {'version': '2.0', 'colour': {'primary': '#123456'}}}
+        runner.content(data, True, v2=True)
+        runner.design_system(data, True)
+        data['design_system']['typography']['font'] = '../unknown.ttf'
+        with self.assertRaises(ValueError):
+            runner.design_system(data, True)
+
+    def test_structural_review_detects_overlap(self):
+        import fitz
+        pdf = fitz.open()
+        page = pdf.new_page()
+        page.insert_text((50, 80), 'First line')
+        self.assertEqual(runner.structural_review(pdf)['structural_status'], 'PASS')
+        page.insert_text((50, 80), 'Second line')
+        result = runner.structural_review(pdf)
+        self.assertEqual(result['structural_status'], 'REVIEW_REQUIRED')
+        self.assertTrue(any(x['type'] == 'possible_text_overlap' for x in result['issues']))
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
