@@ -104,6 +104,21 @@ impl Workspace {
             out.starts_with(&self.root),
             "Path is outside the selected project"
         );
+        // A broad workspace (for example a user's home directory) must never
+        // turn the agent's private policy, runtime or artifact state into model
+        // editable project files. These are managed only by host interfaces.
+        let normalized = |path: &Path| {
+            path.to_string_lossy()
+                .trim_start_matches("\\\\?\\")
+                .replace('\\', "/")
+                .to_lowercase()
+        };
+        let private_root = normalized(&crate::store::data_dir());
+        let target = normalized(&out);
+        ensure!(
+            target != private_root && !target.starts_with(&(private_root + "/")),
+            "Local agent profile state is host-managed and unavailable to project file tools"
+        );
         Ok(out)
     }
 

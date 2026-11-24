@@ -10,6 +10,10 @@ use std::sync::{
 
 fn matches_tool(tool: &str, proposal: &Proposal) -> bool {
     match proposal {
+        Proposal::ToolPack { plan } => {
+            tool == "tool_pack_call"
+                || crate::tool_packs::canonical(tool).as_deref() == Some(plan.tool.as_str())
+        }
         Proposal::Design { plan } => {
             tool == "design_tool"
                 || crate::design_tools::operation(tool)
@@ -50,6 +54,12 @@ pub fn execute_reviewed(
         matches_tool(name, proposal),
         "Approved proposal/tool mismatch"
     );
+    if let Proposal::ToolPack { plan } = proposal {
+        ensure!(
+            internet_enabled || plan.tool != "web.fetch",
+            "Internet access is disabled at execution"
+        );
+    }
     journal.record("dispatch", name, "uncertain-until-result")?;
     let result = tools.execute(proposal, cancel);
     // A failed journal write must not silently become a successful action.

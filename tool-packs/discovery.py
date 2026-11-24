@@ -9,6 +9,7 @@ from system_adapter import SCHEMAS
 from research_adapter import SCHEMAS as RESEARCH_SCHEMAS
 from evidence import SCHEMAS as EVIDENCE_SCHEMAS
 from knowledge import SCHEMAS as KNOWLEDGE_SCHEMAS
+from host_adapter import SCHEMAS as HOST_SCHEMAS
 
 DEPENDENCIES={
  "office.docx":("docx",), "office.xlsx":("openpyxl",), "office.pptx":("pptx",),
@@ -17,6 +18,14 @@ DEPENDENCIES={
  "pdf.render":("pypdfium2","PIL"), "image.inspect":("PIL",), "image.compare":("PIL",)
 }
 ALIASES={
+ "office.preview":"word excel powerpoint docx xlsx pptx office preview convert render",
+ "artifact.import":"import workspace document file image artifact",
+ "artifact.compare":"compare revision versions document changes difference",
+ "knowledge.ingest":"ingest index add document manual policy knowledge collection",
+ "workspace.list":"list files directory workspace tree",
+ "workspace.metadata":"file metadata directory workspace",
+ "workspace.sha256":"file hash checksum workspace sha256",
+ "workflow.run":"pdf report generate preview validation workflow",
  "office.docx":"word report letter proposal document docx",
  "office.xlsx":"excel spreadsheet workbook xlsx tabular data",
  "office.pptx":"powerpoint slides presentation deck pptx",
@@ -77,6 +86,8 @@ def catalog():
     for name,schema in KNOWLEDGE_SCHEMAS.items():
         description={"knowledge.search":"Search local documents policies manuals and knowledge passages","knowledge.documents":"List indexed local documents and revisions","knowledge.citation":"Retrieve exact passage from indexed document","knowledge.statistics":"Inspect local knowledge index statistics"}[name]
         tools[name]={"definition":{"name":name,"description":description,"input_schema":copy.deepcopy(schema)},"category":"knowledge","dependencies":()}
+    for name,schema in HOST_SCHEMAS.items():
+        tools[name]={'definition':{'name':name,'description':name.replace('.',' ')+' using host-owned workspace, reviewed input snapshots or a fixed workflow','input_schema':copy.deepcopy(schema)},'category':'host','dependencies':('pypdfium2','pypdf','PIL') if name=='office.preview' else ()}
     return tools
 
 def tokens(value):

@@ -72,12 +72,52 @@ impl std::fmt::Debug for Failures {
 }
 pub fn document_format_request(request: &str) -> bool {
     let request = request.to_lowercase();
-    ["format", "restyl", "layout", "typograph"]
-        .iter()
-        .any(|word| request.contains(word))
-        && ["docx", "document", "word", "cv", "resume", "résumé"]
+    let words: Vec<_> = request
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|word| !word.is_empty())
+        .collect();
+    if !words.iter().any(|word| {
+        matches!(
+            *word,
+            "docx" | "document" | "documents" | "word" | "cv" | "resume" | "résumé"
+        )
+    }) {
+        return false;
+    }
+    let first = request.split(['.', '\n']).next().unwrap_or("");
+    let primary = words.iter().find(|word| {
+        matches!(
+            **word,
+            "create" | "generate" | "draft" | "compose" | "author" | "edit" | "add" | "replace"
+        ) || word.starts_with("format")
+            || word.starts_with("reformat")
+    });
+    if primary.is_some_and(|word| {
+        matches!(
+            *word,
+            "create" | "generate" | "draft" | "compose" | "author"
+        )
+    }) && (first.contains("from scratch") || !first.contains("existing"))
+    {
+        return false;
+    }
+    if primary.is_some_and(|word| matches!(*word, "edit" | "add" | "replace"))
+        && words.contains(&"content")
+    {
+        return false;
+    }
+    words.iter().enumerate().any(|(index, word)| {
+        let intent = word.starts_with("format")
+            || word.starts_with("reformat")
+            || word.starts_with("restyl")
+            || *word == "layout"
+            || word.starts_with("typograph");
+        let tool_name = word.contains('_');
+        let negative = words[index.saturating_sub(5)..index]
             .iter()
-            .any(|word| request.contains(word))
+            .any(|word| matches!(*word, "not" | "never" | "without"));
+        intent && !tool_name && !negative
+    })
 }
 pub fn incomplete(
     failures: &Failures,
@@ -101,10 +141,143 @@ pub fn incomplete(
     }
     message
 }
+/// Narrow delivery evidence for explicit artifact-production requests. This is
+/// not a content-quality classifier and never certifies the model's prose.
+pub fn requested_artifacts(request: &str) -> BTreeSet<String> {
+    let r = request.to_lowercase();
+    let words: Vec<_> = r.split(|c: char| !c.is_alphanumeric()).collect();
+    if !words.iter().any(|word| {
+        matches!(
+            *word,
+            "create" | "generate" | "produce" | "draft" | "make" | "write"
+        )
+    }) {
+        return BTreeSet::new();
+    }
+    if (r.contains("function") || r.contains("script") || r.contains("source code"))
+        && !r.contains("run it")
+    {
+        return BTreeSet::new();
+    }
+    let mut required = BTreeSet::new();
+    if r.contains("docx")
+        || (words.contains(&"word") && !r.contains("without word") && !r.contains("markdown"))
+    {
+        required.insert("docx".into());
+    }
+    if words
+        .iter()
+        .any(|w| matches!(*w, "xlsx" | "excel" | "workbook"))
+    {
+        required.insert("xlsx".into());
+    }
+    if words
+        .iter()
+        .any(|w| matches!(*w, "pptx" | "powerpoint" | "presentation"))
+    {
+        required.insert("pptx".into());
+    }
+    if words.contains(&"pdf") {
+        required.insert("pdf".into());
+    }
+    required
+}
+pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<String, String> {
+    let canonical = crate::tool_packs::canonical(tool).or_else(|| {
+        (tool == "tool_pack_call").then(|| args["tool"].as_str().unwrap_or("").to_string())
+    });
+    let producer = canonical.as_deref().is_some_and(|name| {
+        matches!(
+            name,
+            "office.docx"
+                | "office.xlsx"
+                | "office.pptx"
+                | "pdf.generate"
+                | "pdf.merge"
+                | "pdf.split"
+                | "office.preview"
+                | "workflow.run"
+        )
+    });
+    let mut found = BTreeMap::new();
+    if producer && result["ok"] == true {
+        fn visit(value: &Value, found: &mut BTreeMap<String, String>) {
+            if let (Some(id), Some(kind), Some(sha)) = (
+                value["artifact_id"].as_str(),
+                value["extension"].as_str(),
+                value["sha256"].as_str(),
+            ) && id.len() == 32
+                && sha.len() == 64
+            {
+                found.insert(id.into(), kind.into());
+            }
+            if let Some(object) = value.as_object() {
+                for child in object.values() {
+                    visit(child, found);
+                }
+            } else if let Some(array) = value.as_array() {
+                for child in array {
+                    visit(child, found);
+                }
+            }
+        }
+        visit(&result["result"], &mut found);
+    }
+    if crate::design_tools::is_tool(tool)
+        && let (Some(path), Some(sha)) = (result["created"].as_str(), result["sha256"].as_str())
+        && sha.len() == 64
+        && let Some(extension) = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+    {
+        found.insert(path.into(), extension.to_lowercase());
+    }
+    found
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn creation_claims_need_new_producer_evidence_not_an_old_artifact_list() {
+        let args = json!({"tool":"artifact.list","arguments":{}});
+        let artifact =
+            json!({"artifact_id":"a".repeat(32),"extension":"docx","sha256":"b".repeat(64)});
+        let listed = json!({"ok":true,"result":{"artifacts":[artifact.clone()]}});
+        assert!(created_artifacts("tool_pack_call", &args, &listed).is_empty());
+        assert_eq!(
+            created_artifacts(
+                "pack__office_docx",
+                &json!({}),
+                &json!({"ok":true,"result":artifact})
+            )
+            .len(),
+            1
+        );
+        assert!(requested_artifacts("Create Word and Excel reports").contains("docx"));
+        assert!(!requested_artifacts("Write a Python function to parse PDF").contains("pdf"));
+    }
+    #[test]
+    fn creation_and_content_editing_do_not_require_the_word_formatter() {
+        assert!(!document_format_request(
+            "Create a Word proposal from scratch. Use good typography. Do not use format_document."
+        ));
+        assert!(!document_format_request(
+            "Create a document about information architecture."
+        ));
+        assert!(!document_format_request(
+            "Edit the existing Word content without changing its formatting."
+        ));
+        assert!(document_format_request(
+            "Create a newly formatted copy of the existing CV."
+        ));
+        assert!(document_format_request(
+            "Format the CV I previously created from scratch."
+        ));
+        assert!(document_format_request(
+            "Improve the formating of this CV document"
+        ));
+    }
     #[test]
     fn unrelated_success_cannot_erase_a_failed_file_operation() {
         let mut failures = Failures::default();

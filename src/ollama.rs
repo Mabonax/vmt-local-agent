@@ -68,6 +68,15 @@ pub fn models(endpoint: &str) -> Result<Vec<String>> {
 pub fn action_schema() -> Value {
     let mut schema = json!({"type":"object","properties":{"kind":{"type":"string","enum":["tool","final"]},"message":{"type":"string"},"tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","colour_palette","colour_contrast","colour_extract","inspect_document","format_document","render_document","compose_document","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},"args":{"type":"object","additionalProperties":false}},"required":["kind","message","tool","args"],"additionalProperties":false});
     let mut properties = serde_json::Map::new();
+    schema["properties"]["tool"]["enum"]
+        .as_array_mut()
+        .expect("action tool list")
+        .extend([
+            json!("discover_tools"),
+            json!("tool_schema"),
+            json!("tool_pack_call"),
+        ]);
+    properties.insert("previous".into(), json!({"type":"string"}));
     properties.insert("path".into(), json!({"type":"string"}));
     properties.insert("query".into(), json!({"type":"string"}));
     properties.insert("content".into(), json!({"type":"string"}));
@@ -130,9 +139,12 @@ pub fn native_mode(settings: &Settings) -> Result<bool> {
         .error_for_status()?
         .json()?;
     ensure!(
-        info["details"]["format"]
-            .as_str()
-            .is_some_and(|f| !f.is_empty()),
+        !settings.model.ends_with(":cloud")
+            && info["remote_host"].is_null()
+            && info["remote_model"].is_null()
+            && info["details"]["format"]
+                .as_str()
+                .is_some_and(|f| !f.is_empty()),
         "This model is not a local weights model. Cloud runtimes are disabled."
     );
     let caps = info["capabilities"].as_array().cloned().unwrap_or_default();
@@ -183,11 +195,29 @@ fn design_properties() -> Value {
     Value::Object(properties)
 }
 
-fn tool_definitions(settings: &Settings) -> Value {
+pub(crate) fn tool_definitions(settings: &Settings) -> Value {
     if settings.mode == "chat" {
         return json!([]);
     }
     let definitions = [
+        (
+            "discover_tools",
+            "Find reviewed local capabilities and fixed workflows for a task. Does not execute the selected capability.",
+            json!({"query":{"type":"string","maxLength":4000}}),
+            vec!["query"],
+        ),
+        (
+            "tool_schema",
+            "Read the exact input schema for a registered tool-pack capability.",
+            json!({"tool":{"type":"string"}}),
+            vec!["tool"],
+        ),
+        (
+            "tool_pack_call",
+            "Execute one discovered capability after exact operator review. Use artifact IDs, never binary data or private storage paths.",
+            json!({"tool":{"type":"string"},"arguments":{"type":"object"},"previous":{"type":"string"}}),
+            vec!["tool", "arguments"],
+        ),
         (
             "design_tool",
             "Run a reviewed local design adapter. Operations: scene_repair_plan(input JSON containing scene and review) requires scene-repair; returns advisory object matches and bounded candidate. Vision: vision_inspect(input raster,model installed local vision model,mode describe/design_review/document_review/slide_review/extract) requires vision-intelligence. Creative: creative_plan(input brief JSON) requires creative-director, returns ranked scene candidates. Templates: template_plan(input JSON), scene_check(input JSON) require creative-templates. Image: image_inspect(input raster), image_prepare(input raster,output PNG/JPEG/WebP,width,height in pixels,mode contain/cover), image_adjust(input,output,mode,optional amount percent) require image-intelligence. Layout: layout_grid(input JSON), layout_check(input JSON), layout_arrange(input JSON) require layout-intelligence. svg_compose(input JSON,output SVG/PNG/PDF, optional assets array of local raster paths; image objects refer to zero-based asset index) requires vector-graphics. Typography: type_scale(mode: document/presentation,size), measure_text(font,sample,size,width in points) require typography-intelligence. Other operations: repair(foreground,background), gradient(foreground,background,count), categorical(seed,count), simulate(seed,mode: protan/deutan/tritan), system(seed,theme), distance(foreground,background) require colour-intelligence-v2. V1 operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), compose_v2(input JSON with design_system,output DOCX/PPTX; requires professional-document-design-v2), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
@@ -406,6 +436,92 @@ pub fn next_turn(
     cancel: &Arc<AtomicBool>,
     on_progress: impl Fn(usize),
 ) -> Result<ModelTurn> {
+    next_turn_with_tools(settings, messages, native, cancel, on_progress, None)
+}
+
+pub fn next_turn_with_tools(
+    settings: &Settings,
+    messages: &[Value],
+    native: bool,
+    cancel: &Arc<AtomicBool>,
+    on_progress: impl Fn(usize),
+    tool_override: Option<&Value>,
+) -> Result<ModelTurn> {
+    next_turn_bounded(
+        settings,
+        messages,
+        native,
+        cancel,
+        on_progress,
+        tool_override,
+        Duration::from_secs(240),
+    )
+}
+
+/// The provider thread only receives/parses data. It cannot dispatch tools. A
+/// stopped or expired host turn never accepts its later response for execution.
+pub fn next_turn_bounded(
+    settings: &Settings,
+    messages: &[Value],
+    native: bool,
+    cancel: &Arc<AtomicBool>,
+    on_progress: impl Fn(usize),
+    tool_override: Option<&Value>,
+    timeout: Duration,
+) -> Result<ModelTurn> {
+    let settings = settings.clone();
+    let messages = messages.to_vec();
+    let definitions = tool_override.cloned();
+    let request_cancel = Arc::new(AtomicBool::new(false));
+    let worker_cancel = Arc::clone(&request_cancel);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (progress_tx, progress_rx) = std::sync::mpsc::channel();
+    let timeout = timeout.min(Duration::from_secs(240));
+    let started = std::time::Instant::now();
+    std::thread::spawn(move || {
+        let result = model_turn_request(
+            &settings,
+            &messages,
+            native,
+            &worker_cancel,
+            |bytes| {
+                let _ = progress_tx.send(bytes);
+            },
+            definitions.as_ref(),
+            timeout,
+        );
+        let _ = tx.send(result);
+    });
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            request_cancel.store(true, Ordering::Relaxed);
+            bail!("Stopped during local inference");
+        }
+        if started.elapsed() >= timeout {
+            request_cancel.store(true, Ordering::Relaxed);
+            bail!(
+                "Local inference exceeded the host turn deadline; no action from that response was executed"
+            );
+        }
+        while let Ok(bytes) = progress_rx.try_recv() {
+            on_progress(bytes);
+        }
+        match rx.recv_timeout(Duration::from_millis(30)) {
+            Ok(result) => return result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(_) => bail!("Local inference transport closed"),
+        }
+    }
+}
+fn model_turn_request(
+    settings: &Settings,
+    messages: &[Value],
+    native: bool,
+    cancel: &Arc<AtomicBool>,
+    on_progress: impl Fn(usize),
+    tool_override: Option<&Value>,
+    timeout: Duration,
+) -> Result<ModelTurn> {
     ensure!(!cancel.load(Ordering::Relaxed), "Stopped");
     let endpoint = local_endpoint(&settings.endpoint)?;
     let mut body = json!({"model":settings.model,"messages":messages,"stream":true,"think":settings.model.to_ascii_lowercase().contains("deepseek"),
@@ -413,7 +529,9 @@ pub fn next_turn(
     if settings.mode == "edit" {
         body["format"] = json!({"type":"object","properties":{"old":{"type":"string"},"new":{"type":"string"}},"required":["old","new"],"additionalProperties":false});
     } else if native {
-        body["tools"] = tool_definitions(settings);
+        body["tools"] = tool_override
+            .cloned()
+            .unwrap_or_else(|| tool_definitions(settings));
     } else {
         body["format"] = action_schema();
     }
@@ -421,7 +539,7 @@ pub fn next_turn(
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(240))
+        .timeout(timeout)
         .build()?
         .post(format!("{endpoint}/api/chat"))
         .json(&body)
@@ -602,12 +720,7 @@ pub fn parse_action(text: &str) -> Result<Action> {
 
 pub fn compact(messages: &mut Vec<Value>, limit: usize) {
     // Keep the system instructions and original user task. Tool results are data.
-    while messages
-        .iter()
-        .map(|m| m["content"].as_str().unwrap_or("").len())
-        .sum::<usize>()
-        > limit
-        && messages.len() > 5
+    while messages.iter().map(|m| m.to_string().len()).sum::<usize>() > limit && messages.len() > 5
     {
         messages.remove(2);
         while messages.len() > 3 && messages[2]["role"].as_str() == Some("tool") {
@@ -627,6 +740,50 @@ pub fn compact(messages: &mut Vec<Value>, limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inference_deadlines_and_cancellation_do_not_wait_for_provider_completion() {
+        use std::{io::Read, net::TcpListener, time::Instant};
+        for cancelled in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let settings = Settings {
+                endpoint: format!("http://{}", listener.local_addr().unwrap()),
+                ..Default::default()
+            };
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut bytes = [0; 4096];
+                let _ = socket.read(&mut bytes);
+                std::thread::sleep(Duration::from_millis(600));
+            });
+            let cancel = Arc::new(AtomicBool::new(false));
+            if cancelled {
+                let stop = cancel.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(80));
+                    stop.store(true, Ordering::Relaxed);
+                });
+            }
+            let started = Instant::now();
+            assert!(
+                next_turn_bounded(
+                    &settings,
+                    &[json!({"role":"user","content":"test"})],
+                    false,
+                    &cancel,
+                    |_| {},
+                    None,
+                    if cancelled {
+                        Duration::from_secs(5)
+                    } else {
+                        Duration::from_millis(100)
+                    }
+                )
+                .is_err()
+            );
+            assert!(started.elapsed() < Duration::from_millis(500));
+            server.join().unwrap();
+        }
+    }
     #[test]
     fn document_functions_require_clear_inputs_and_are_hidden_when_readonly() {
         let definitions = tool_definitions(&Settings::default());

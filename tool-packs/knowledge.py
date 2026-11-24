@@ -7,6 +7,7 @@ import re
 import sqlite3
 import threading
 import uuid
+import stat
 from pathlib import Path
 from datetime import datetime,timezone
 
@@ -27,7 +28,7 @@ class KnowledgeStore:
         root=Path(private_directory).resolve(strict=True)
         if not root.is_dir(): raise ValueError("Invalid private directory")
         path=root/"knowledge.sqlite3"
-        if path.is_symlink() or (path.exists() and not path.is_file()): raise ValueError("Invalid database")
+        if path.is_symlink() or (path.exists() and (not path.is_file() or getattr(path.lstat(),'st_file_attributes',0)&0x400 or path.stat().st_nlink!=1)): raise ValueError("Invalid database")
         self._lock=threading.RLock()
         self._db=sqlite3.connect(path,timeout=5,check_same_thread=False)
         self._db.row_factory=sqlite3.Row
@@ -40,27 +41,30 @@ class KnowledgeStore:
           CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(
             document_id UNINDEXED, start UNINDEXED, end UNINDEXED, text);
         """)
+        if 'source_sha256' not in {row[1] for row in self._db.execute('PRAGMA table_info(documents)')}:
+            self._db.execute('ALTER TABLE documents ADD COLUMN source_sha256 TEXT')
     def close(self):
         with self._lock: self._db.close()
-    def ingest(self,source_key,title,text):
+    def ingest(self,source_key,title,text,source_sha256=None):
         """Host-only ingestion of explicitly authorized text, not file paths."""
         for value,limit in ((source_key,200),(title,300),(text,100000)):
             if type(value) is not str or not value.strip() or len(value)>limit or "\x00" in value: raise ValueError("Invalid document")
         digest=hashlib.sha256(text.encode()).hexdigest()
+        if source_sha256 is not None and (type(source_sha256) is not str or not re.fullmatch('[0-9a-f]{64}',source_sha256)): raise ValueError('Invalid source digest')
         with self._lock,self._db:
             self._db.execute("BEGIN IMMEDIATE")
             last=self._db.execute("SELECT * FROM documents WHERE source_key=? ORDER BY revision DESC LIMIT 1",(source_key,)).fetchone()
-            if last and last["sha256"]==digest and last["title"]==title: return self._meta(last)
+            if last and last["sha256"]==digest and last["title"]==title and last['source_sha256']==source_sha256: return self._meta(last)
             count,size=self._db.execute("SELECT count(*),coalesce(sum(length(text)),0) FROM documents").fetchone()
             if count>=500 or size+len(text)>10000000: raise ValueError("Knowledge quota exceeded")
             doc=uuid.uuid4().hex
             rev=last["revision"]+1 if last else 1
-            self._db.execute("INSERT INTO documents VALUES(?,?,?,?,?,?,?)",(doc,source_key,title,text,digest,rev,datetime.now(timezone.utc).isoformat()))
+            self._db.execute("INSERT INTO documents(id,source_key,title,text,sha256,revision,indexed_at,source_sha256) VALUES(?,?,?,?,?,?,?,?)",(doc,source_key,title,text,digest,rev,datetime.now(timezone.utc).isoformat(),source_sha256))
             self._db.executemany("INSERT INTO passages VALUES(?,?,?,?)",((doc,i,min(i+800,len(text)),text[i:i+800]) for i in range(0,len(text),600)))
             return self._meta(self._db.execute("SELECT * FROM documents WHERE id=?",(doc,)).fetchone())
     @staticmethod
     def _meta(row):
-        return {"document_id":row["id"],"title":row["title"],"revision":row["revision"],"sha256":row["sha256"],"indexed_at":row["indexed_at"],"trust":"untrusted_document_content"}
+        return {"document_id":row["id"],"title":row["title"],"revision":row["revision"],"sha256":row["sha256"],"source_sha256":row['source_sha256'],"indexed_at":row["indexed_at"],"trust":"untrusted_document_content"}
     def documents(self,offset,limit):
         with self._lock:
             return [self._meta(r) for r in self._db.execute("SELECT * FROM documents ORDER BY indexed_at DESC,id LIMIT ? OFFSET ?",(limit,offset))]

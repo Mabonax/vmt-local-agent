@@ -370,6 +370,36 @@ pub fn run_reviewed(
     args: &Value,
     cancel: &AtomicBool,
 ) -> Result<String> {
+    run_reviewed_in(server_id, approved, operation, tool, args, cancel, None)
+}
+pub fn run_reviewed_with_workspace(
+    server_id: &str,
+    approved: &Server,
+    operation: &str,
+    tool: &str,
+    args: &Value,
+    cancel: &AtomicBool,
+    workspace: &crate::workspace::Workspace,
+) -> Result<String> {
+    run_reviewed_in(
+        server_id,
+        approved,
+        operation,
+        tool,
+        args,
+        cancel,
+        Some(workspace),
+    )
+}
+fn run_reviewed_in(
+    server_id: &str,
+    approved: &Server,
+    operation: &str,
+    tool: &str,
+    args: &Value,
+    cancel: &AtomicBool,
+    workspace: Option<&crate::workspace::Workspace>,
+) -> Result<String> {
     ensure!(valid_id(server_id), "Invalid MCP server ID");
     ensure!(
         matches!(operation, "tools/list" | "tools/call"),
@@ -401,7 +431,7 @@ pub fn run_reviewed(
     }
     let result = (|| -> Result<String> {
         let session = sessions.get_mut(server_id).context("MCP session missing")?;
-        let result = if operation == "tools/list" {
+        let mut result = if operation == "tools/list" {
             let mut tools = Vec::new();
             let mut cursors = HashSet::new();
             let mut params = json!({});
@@ -485,6 +515,7 @@ pub fn run_reviewed(
                 clip(&entries.join("\n"), 12_000)
             ))
         } else {
+            strip_binary(&mut result, workspace);
             ensure!(
                 result["isError"].as_bool() != Some(true),
                 "MCP tool failed: {}",
@@ -501,9 +532,61 @@ pub fn run_reviewed(
     }
     result
 }
+fn strip_binary(value: &mut Value, workspace: Option<&crate::workspace::Workspace>) {
+    if let Some(object) = value.as_object_mut() {
+        let kind = object.get("type").and_then(Value::as_str).unwrap_or("");
+        let mime = object
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let binary = matches!(kind, "image" | "audio")
+            || object.contains_key("blob")
+            || (!mime.is_empty() && object.contains_key("data"));
+        if binary {
+            let data = object.remove("data").or_else(|| object.remove("blob"));
+            let extension = match mime.as_str() {
+                "image/png" => Some("png"),
+                "image/jpeg" => Some("jpg"),
+                "application/pdf" => Some("pdf"),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+                    Some("docx")
+                }
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+                    Some("pptx")
+                }
+                _ => None,
+            };
+            let artifact = workspace
+                .zip(extension)
+                .zip(data.as_ref().and_then(Value::as_str))
+                .and_then(|((workspace, extension), data)| {
+                    crate::tool_packs::receive_artifact(workspace, extension, data).ok()
+                });
+            object.insert("binary_omitted".into(), json!(true));
+            object.insert("artifact".into(),artifact.unwrap_or_else(||json!({"status":"not_registered","reason":"Unsupported binary or artifact runtime unavailable; raw bytes are excluded from model context"})));
+        }
+        for child in object.values_mut() {
+            strip_binary(child, workspace);
+        }
+    } else if let Some(values) = value.as_array_mut() {
+        for child in values {
+            strip_binary(child, workspace);
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn binary_mcp_payloads_never_enter_model_context() {
+        let mut result = json!({"content":[{"type":"image","mimeType":"image/png","data":"private-base64"},{"type":"resource","resource":{"mimeType":"application/pdf","blob":"private-document"}},{"type":"text","text":"kept evidence"}]});
+        strip_binary(&mut result, None);
+        assert!(!result.to_string().contains("private-base64"));
+        assert!(!result.to_string().contains("private-document"));
+        assert!(result.to_string().contains("kept evidence"));
+    }
     #[test]
     fn server_id_validation() {
         assert!(valid_id("wordcraft"));

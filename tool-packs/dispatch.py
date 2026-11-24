@@ -47,7 +47,7 @@ def registry():
         if folder.is_symlink() or (folder/"manifest.json").is_symlink() or (folder/"runner.py").is_symlink(): raise ValueError("Linked pack rejected")
         m=json.loads((folder/"manifest.json").read_text(encoding="utf-8"))
         if m["runtime"]!="python3" or m["protocol"]!="stdin-json-v1" or m["entrypoint"]!="runner.py" or m["permissions"] or m["network"] is not False: raise ValueError("Unsupported pack policy")
-        if not 1<=m["timeout_seconds"]<=10 or not 1<=m["max_input_bytes"]<=LIMIT or not 1<=m["max_output_bytes"]<=LIMIT: raise ValueError("Invalid limits")
+        if not 1<=m["timeout_seconds"]<=30 or not 1<=m["max_input_bytes"]<=LIMIT or not 1<=m["max_output_bytes"]<=LIMIT: raise ValueError("Invalid limits")
         for tool in m["tools"]:
             if tool["name"] in result: raise ValueError("Duplicate tool")
             result[tool["name"]]=(folder,m,tool)
@@ -58,7 +58,7 @@ def dispatch(name,args,cancel=None):
     validate(args,tool["input_schema"])
     request=json.dumps({"tool":name,"args":args},allow_nan=False).encode()
     if len(request)>m["max_input_bytes"]: raise ValueError("Request too large")
-    p=run_bounded([sys.executable,"-I","-B",str(folder/"runner.py")],request,folder,m["timeout_seconds"],m["max_output_bytes"],cancel)
+    p=run_bounded([sys.executable,"-I","-B",str(ROOT/"leaf_limits.py"),str(folder/"runner.py")],request,folder,m["timeout_seconds"],m["max_output_bytes"],cancel)
     if len(p.stdout)>m["max_output_bytes"] or len(p.stderr)>LIMIT: raise ValueError("Output too large")
     response=json.loads(p.stdout)
     if not isinstance(response,dict) or type(response.get("ok")) is not bool or p.returncode!= (0 if response["ok"] else 1): raise ValueError("Invalid response")

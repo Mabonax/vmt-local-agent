@@ -1,19 +1,22 @@
-"""Bounded subprocess transport for trusted leaf runners only.
-Not a sandbox: no hard CPU/RAM limit or Windows descendant containment.
+"""Bounded transport and resource limits for reviewed subprocesses.
+Windows Job Objects contain descendants; POSIX leaves use process groups and
+rlimits. Neither mechanism is a filesystem or network sandbox.
 """
 import os
 import signal
 import subprocess
 import threading
 import time
+from process_limits import WindowsJob
 
 def run_bounded(argv,request,cwd,timeout,output_limit,cancel=None):
     if cancel is not None and cancel.is_set(): raise ValueError("Cancelled")
-    if not 0<timeout<=10 or not 0<output_limit<=1048576 or len(request)>1048576: raise ValueError("Invalid execution limits")
+    if not 0<timeout<=120 or not 0<output_limit<=1048576 or len(request)>1048576: raise ValueError("Invalid execution limits")
     # Windows may require SystemRoot to load runtime libraries.
-    env={k:os.environ[k] for k in ("SystemRoot","WINDIR") if os.name=="nt" and k in os.environ}
-    options={"start_new_session":True} if os.name!="nt" else {}
+    env={k:os.environ[k] for k in ("SystemRoot","WINDIR","TEMP","TMP") if os.name=="nt" and k in os.environ}
+    options={"start_new_session":True} if os.name!="nt" else {"creationflags":0x08000000}
     p=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=cwd,env=env,**options)
+    job=WindowsJob(p,cpu_seconds=max(12,timeout+2))
     overflow=threading.Event(); io_error=threading.Event()
     buffers=[bytearray(),bytearray()]
     def read(pipe,buf):
@@ -39,7 +42,9 @@ def run_bounded(argv,request,cwd,timeout,output_limit,cancel=None):
         if os.name!="nt":
             try: os.killpg(p.pid,signal.SIGKILL)
             except ProcessLookupError: pass
-        elif p.poll() is None: p.kill()
+        else:
+            job.close()
+            if p.poll() is None: p.kill()
     try:
         while p.poll() is None or any(t.is_alive() for t in threads):
             if overflow.is_set(): raise ValueError("Output limit exceeded")
@@ -54,3 +59,4 @@ def run_bounded(argv,request,cwd,timeout,output_limit,cancel=None):
         if p.poll() is None or any(t.is_alive() for t in threads): stop()
         p.wait(timeout=2)
         for t in threads: t.join(timeout=.1)
+        job.close()

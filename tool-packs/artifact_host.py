@@ -6,8 +6,9 @@ PRODUCERS={"office.docx":"docx","office.xlsx":"xlsx","office.pptx":"pptx",
 SINGLE={"pdf.inspect","pdf.extract_text","pdf.split","artifact.inspect","artifact.hash","pdf.render","image.inspect"}
 
 class ArtifactHost:
-    def __init__(self, store):
+    def __init__(self, store, cancel=None):
         self.store=store
+        self.cancel=cancel
 
     def call(self, name, args, previous=None):
         if name=="artifact.list":
@@ -36,7 +37,7 @@ class ArtifactHost:
             if type(ids) is not list or not 1<=len(ids)<=5: raise ValueError("Invalid references")
             if any(self.store.metadata(i)["extension"]!="pdf" for i in ids): raise ValueError("Expected PDF")
             args={"documents":[self.store.retrieve(i) for i in ids]}
-        response=dispatch(name,args)
+        response=dispatch(name,args,cancel=self.cancel)
         if response["ok"] and name in PRODUCERS:
             if response["result"].get("extension")!=PRODUCERS[name]: raise ValueError("Unexpected artifact format")
             return {"ok":True,"result":self.store.store(response["result"],previous)}

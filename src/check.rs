@@ -14,6 +14,129 @@ fn main() -> anyhow::Result<()> {
         .nth(2)
         .unwrap_or_else(|| "qwen3.5:4b".into());
     match model.as_str() {
+        "--unified-live" => {
+            let project = raw.get(3).ok_or_else(|| {
+                anyhow::anyhow!("Provide model, synthetic workspace and request file")
+            })?;
+            let request = raw
+                .get(4)
+                .ok_or_else(|| anyhow::anyhow!("Provide request file"))?;
+            return vmt_local_agent::unified_trial::run(
+                &selected,
+                project,
+                request,
+                raw.iter().any(|v| v == "--json"),
+            );
+        }
+        "--tool-pack-run" | "--tool-pack-batch" => {
+            let request_file = raw.get(3).ok_or_else(|| {
+                anyhow::anyhow!("Provide workspace and a reviewed request JSON file")
+            })?;
+            anyhow::ensure!(
+                std::fs::metadata(request_file)?.len() <= 1_000_000,
+                "Request file exceeds limit"
+            );
+            let request: serde_json::Value = serde_json::from_slice(&std::fs::read(request_file)?)?;
+            let web = raw.iter().any(|v| v == "--internet");
+            let mut tools = vmt_local_agent::tools::Tools {
+                workspace: vmt_local_agent::workspace::Workspace::new(&selected)?,
+                observed: Default::default(),
+            };
+            let requests = if model == "--tool-pack-batch" {
+                request
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("Expected reviewed request array"))?
+                    .clone()
+            } else {
+                vec![request]
+            };
+            anyhow::ensure!(requests.len() <= 20, "Batch exceeds 20 reviewed actions");
+            let mut results = Vec::new();
+            for request in requests {
+                let vmt_local_agent::tools::Prepared::Review(proposal) =
+                    tools.prepare("tool_pack_call", &request, false, web)?
+                else {
+                    anyhow::bail!("Expected reviewed capability")
+                };
+                // Explicit CLI operator invocation of the exact immutable parsed file.
+                // This entry point is not registered as a model capability.
+                if raw.iter().any(|v| v == "--review-stdin") {
+                    println!("{}", vmt_local_agent::tools::diff(&proposal));
+                    println!("Prepared exact action. Type APPROVE to execute.");
+                    use std::io::Write;
+                    std::io::stdout().flush()?;
+                    let mut answer = String::new();
+                    std::io::stdin().read_line(&mut answer)?;
+                    anyhow::ensure!(answer.trim() == "APPROVE", "Action denied");
+                }
+                let mut journal =
+                    vmt_local_agent::task_journal::TaskJournal::start(&tools.workspace)?;
+                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                if let Some(index) = raw.iter().position(|v| v == "--cancel-after-ms") {
+                    let delay: u64 = raw
+                        .get(index + 1)
+                        .ok_or_else(|| anyhow::anyhow!("Missing cancellation delay"))?
+                        .parse()?;
+                    anyhow::ensure!(delay <= 120000, "Cancellation delay exceeds trial bound");
+                    let stop = cancel.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(delay));
+                        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                    });
+                }
+                let result = vmt_local_agent::execution::execute_reviewed(
+                    &mut tools,
+                    "tool_pack_call",
+                    &proposal,
+                    false,
+                    web,
+                    &mut journal,
+                    &cancel,
+                );
+                journal.finish(if result.is_ok() {
+                    "completed"
+                } else {
+                    "failed"
+                })?;
+                results.push(serde_json::from_str::<serde_json::Value>(&result?)?);
+            }
+            if model == "--tool-pack-batch" {
+                println!("{}", serde_json::to_string(&results)?);
+            } else {
+                println!("{}", results[0]);
+            }
+            return Ok(());
+        }
+        "--tool-pack-save" => {
+            let id = raw.get(3).ok_or_else(|| {
+                anyhow::anyhow!("Provide workspace, artifact ID and new destination")
+            })?;
+            let destination = raw
+                .get(4)
+                .ok_or_else(|| anyhow::anyhow!("Provide destination"))?;
+            vmt_local_agent::tool_packs::save_artifact(
+                &vmt_local_agent::workspace::Workspace::new(&selected)?,
+                id,
+                std::path::Path::new(destination),
+            )?;
+            println!("Verified artifact saved to the explicitly selected new file.");
+            return Ok(());
+        }
+        "--tool-pack-configure" => {
+            let office = raw.get(3).map(String::as_str).filter(|s| *s != "none");
+            let config = vmt_local_agent::tool_packs::configure(&selected, office)?;
+            println!(
+                "Reviewed tool runtime configured: {} capabilities, discovery budget {} bytes. Actions still require review.",
+                vmt_local_agent::tool_packs::catalog().len(),
+                config.discovery_bytes
+            );
+            return Ok(());
+        }
+        "--tool-pack-status" => {
+            let workspace = vmt_local_agent::workspace::Workspace::new(&selected)?;
+            println!("{}", vmt_local_agent::tool_packs::status(&workspace)?);
+            return Ok(());
+        }
         "--document-authoring" => {
             let project = raw.get(3).ok_or_else(|| anyhow::anyhow!("Provide model, project, request file, stage 1-3 and optional output-token limit"))?;
             let request = raw

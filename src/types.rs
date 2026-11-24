@@ -96,6 +96,9 @@ pub struct Action {
 
 #[derive(Clone, Debug)]
 pub enum Proposal {
+    ToolPack {
+        plan: Box<crate::tool_packs::Plan>,
+    },
     Design {
         plan: Box<crate::design_tools::Plan>,
     },

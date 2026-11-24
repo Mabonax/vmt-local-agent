@@ -27,7 +27,14 @@ impl Capability {
     }
 }
 pub fn classify(tool: &str) -> Result<Capability> {
+    if crate::tool_packs::canonical(tool).as_deref() == Some("web.fetch") {
+        return Ok(Capability::Internet);
+    }
+    if crate::tool_packs::is_tool(tool) {
+        return Ok(Capability::ExternalProcess);
+    }
     Ok(match tool {
+        "discover_tools" | "tool_schema" => Capability::Read,
         "list_files" | "read_file" | "search_text" | "list_skills" | "load_skill"
         | "skill_resource" | "memory_search" | "knowledge_search" | "list_workflows"
         | "workflow_status" | "mcp_servers" | "mcp_schema" | "research_sources"

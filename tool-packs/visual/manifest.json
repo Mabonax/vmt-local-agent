@@ -5,7 +5,7 @@
   "protocol": "stdin-json-v1",
   "permissions": [],
   "network": false,
-  "timeout_seconds": 10,
+  "timeout_seconds": 30,
   "max_input_bytes": 1048576,
   "max_output_bytes": 1048576,
   "tools": [

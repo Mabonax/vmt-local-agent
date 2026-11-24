@@ -44,8 +44,29 @@ impl Tools {
         // This independent guard applies to every tool, including newly added MCP
         // and knowledge tools; prompts cannot grant missing capabilities.
         policy::authorize(name, read_only, web)?;
+        if crate::tool_packs::is_tool(name) {
+            return Ok(Prepared::Review(Proposal::ToolPack {
+                plan: Box::new(crate::tool_packs::prepare(
+                    &self.workspace,
+                    name,
+                    args,
+                    web,
+                )?),
+            }));
+        }
         let path = args["path"].as_str().unwrap_or(".");
         match name {
+            "discover_tools" => Ok(Prepared::Output(serde_json::to_string_pretty(
+                &crate::tool_packs::discover(&self.workspace, string(args, "query")?, web)?,
+            )?)),
+            "tool_schema" => {
+                let catalog = crate::tool_packs::catalog();
+                Ok(Prepared::Output(serde_json::to_string_pretty(
+                    catalog
+                        .get(string(args, "tool")?)
+                        .context("Unknown registered capability")?,
+                )?))
+            }
             "design_tool" | "colour_palette" | "colour_contrast" | "colour_extract"
             | "inspect_document" | "format_document" | "render_document" | "compose_document" => {
                 Ok(Prepared::Review(Proposal::Design {
@@ -305,8 +326,29 @@ impl Tools {
             "Stopped before executing the approved action"
         );
         match proposal {
+            Proposal::ToolPack { plan } => {
+                crate::tool_packs::execute(&self.workspace, plan, cancel)
+            }
             Proposal::Design { plan } => {
-                crate::design_tools::execute(&self.workspace, plan, cancel)
+                let text = crate::design_tools::execute(&self.workspace, plan, cancel)?;
+                if crate::tool_packs::configured()
+                    && let Ok(mut result) = serde_json::from_str::<Value>(&text)
+                {
+                    if let (Some(path), Some(sha)) =
+                        (result["created"].as_str(), result["sha256"].as_str())
+                    {
+                        let registration =
+                            crate::tool_packs::register_generated(&self.workspace, path, sha);
+                        result["artifact_registration"] = match registration {
+                            Ok(record) => record,
+                            Err(_) => {
+                                json!({"status":"not_registered","reason":"The workspace output exists; private artifact storage is unavailable or this format/size is unsupported."})
+                            }
+                        };
+                    }
+                    return Ok(serde_json::to_string_pretty(&result)?);
+                }
+                Ok(text)
             }
             Proposal::File {
                 path,
@@ -337,7 +379,15 @@ impl Tools {
                 tool,
                 arguments,
                 launch,
-            } => mcp::run_reviewed(server, launch, operation, tool, arguments, cancel),
+            } => mcp::run_reviewed_with_workspace(
+                server,
+                launch,
+                operation,
+                tool,
+                arguments,
+                cancel,
+                &self.workspace,
+            ),
             Proposal::KnowledgeIndex { model, endpoint } => {
                 knowledge::index_at(&self.workspace, model, endpoint, cancel)
             }
@@ -352,6 +402,7 @@ impl Tools {
 
 pub fn diff(proposal: &Proposal) -> String {
     match proposal {
+        Proposal::ToolPack { plan } => crate::tool_packs::review(plan),
         Proposal::Design { plan } => plan.describe(),
         Proposal::File {
             path,
@@ -546,7 +597,7 @@ pub fn public_ip(ip: IpAddr) -> bool {
     }
 }
 
-fn validate_url(url: &str) -> Result<reqwest::Url> {
+pub(crate) fn validate_url(url: &str) -> Result<reqwest::Url> {
     ensure!(url.len() <= 2048, "Public URL exceeds 2048 bytes");
     let parsed = reqwest::Url::parse(url)?;
     ensure!(
