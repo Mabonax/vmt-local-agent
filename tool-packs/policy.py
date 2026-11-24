@@ -20,6 +20,7 @@ class PolicyHost:
         self._allowed=frozenset(allowed)
         self._review=frozenset(review_required)
         if not self._allowed<=set(catalog()) or not self._review<=self._allowed: raise ValueError("Invalid policy")
+        if "web.fetch" in self._allowed and "web.fetch" not in self._review: raise ValueError("Network fetch requires review")
         self._integrity_check=integrity_check
         self._tokens={}
         self._journal=deque(maxlen=1000)
