@@ -37,6 +37,8 @@ pub struct Request {
     pub input: Option<String>,
     pub output: Option<String>,
     pub count: Option<u8>,
+    pub preset: Option<String>,
+    pub accent: Option<String>,
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -45,6 +47,35 @@ pub struct Plan {
     pub fingerprint: String,
     pub input_sha256: Option<String>,
     pub workspace: PathBuf,
+}
+pub fn operation(tool: &str) -> Option<&'static str> {
+    match tool {
+        "colour_palette" => Some("palette"),
+        "colour_contrast" => Some("contrast"),
+        "colour_extract" => Some("extract"),
+        "inspect_document" => Some("inspect_document"),
+        "format_document" => Some("format_document"),
+        "render_document" => Some("render"),
+        "compose_document" => Some("compose"),
+        _ => None,
+    }
+}
+pub fn is_tool(tool: &str) -> bool {
+    tool == "design_tool" || operation(tool).is_some()
+}
+pub fn prepare_named(workspace: &Workspace, tool: &str, args: &Value) -> Result<Plan> {
+    let mut args = args.clone();
+    if let Some(operation) = operation(tool) {
+        let object = args
+            .as_object_mut()
+            .context("Tool arguments must be an object")?;
+        ensure!(
+            !object.contains_key("operation"),
+            "Use only the documented arguments for {tool}; operation is implied by its tool name"
+        );
+        object.insert("operation".into(), json!(operation));
+    }
+    prepare(workspace, &args)
 }
 fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -104,7 +135,7 @@ pub fn status(id: &str) -> &'static str {
 }
 pub fn integration_note(id: &str) -> &'static str {
     if ["colour-intelligence", "professional-document-design"].contains(&id) {
-        "\nDesktop integration: use the registered design_tool with operation palette/contrast/extract for colour-intelligence or compose/render for professional-document-design. Do not use arbitrary shell commands to run these scripts. Outputs must be new project-relative paths. Rendering produces visual_review PENDING; inspect every PNG before claiming visual acceptance. Tool execution requires independent action review."
+        "\nDesktop integration: use colour_palette(seed,mode,theme), colour_contrast(foreground,background), colour_extract(input,count); inspect_document(input), format_document(input,output,accent,preset=cv), compose_document(input,output), render_document(input,output). These are separate tool names; do not pass an operation argument to them. For EXISTING DOCX use inspect_document then format_document, NOT compose_document. Only pass the documented arguments, never the whole palette object. render_document creates a review DIRECTORY, not a DOCX. Its output argument is required, for example review-cv. Use new project-relative outputs. Do not use shell commands to run these scripts. Visual review remains PENDING until every PNG is inspected. Each execution requires review."
     } else {
         ""
     }
@@ -120,7 +151,16 @@ impl Request {
     fn validate(&self, workspace: &Workspace) -> Result<()> {
         let operation = self.operation.as_str();
         ensure!(
-            ["palette", "contrast", "extract", "compose", "render"].contains(&operation),
+            [
+                "palette",
+                "contrast",
+                "extract",
+                "compose",
+                "render",
+                "inspect_document",
+                "format_document"
+            ]
+            .contains(&operation),
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -128,6 +168,8 @@ impl Request {
             "palette" => &["seed", "mode", "theme"],
             "contrast" => &["foreground", "background"],
             "extract" => &["input", "count"],
+            "inspect_document" => &["input"],
+            "format_document" => &["input", "output", "preset", "accent"],
             _ => &["input", "output"],
         };
         for (key, value) in value.as_object().unwrap() {
@@ -170,13 +212,30 @@ impl Request {
             colour(self.foreground.as_deref())?;
             colour(self.background.as_deref())?;
         }
+        if operation == "format_document" {
+            ensure!(
+                self.preset.as_deref().unwrap_or("cv") == "cv",
+                "Only the cv formatting preset is supported"
+            );
+            if let Some(accent) = self.accent.as_deref() {
+                colour(Some(accent))?;
+            }
+        }
         if operation == "extract" {
             ensure!(
                 (2..=16).contains(&self.count.unwrap_or(6)),
                 "Extraction count must be 2-16"
             );
         }
-        if ["extract", "compose", "render"].contains(&operation) {
+        if [
+            "extract",
+            "compose",
+            "render",
+            "inspect_document",
+            "format_document",
+        ]
+        .contains(&operation)
+        {
             let input = self.input.as_deref().context("Input path is required")?;
             ensure!(input.len() <= 240, "Input path too long");
             workspace.resolve(input, false)?;
@@ -188,6 +247,7 @@ impl Request {
             let extensions: &[&str] = match operation {
                 "compose" => &["json"],
                 "extract" => &["png", "jpg", "jpeg", "webp"],
+                "inspect_document" | "format_document" => &["docx"],
                 _ => &["docx", "pptx"],
             };
             ensure!(
@@ -195,7 +255,7 @@ impl Request {
                 "Unsupported input format"
             );
         }
-        if ["compose", "render"].contains(&operation) {
+        if ["compose", "render", "format_document"].contains(&operation) {
             let output = self.output.as_deref().context("Output path is required")?;
             ensure!(
                 !output.is_empty()
@@ -211,6 +271,24 @@ impl Request {
                 !path.exists() && path.parent().is_some_and(Path::is_dir),
                 "Output must be new and its parent must exist"
             );
+            if operation == "render" {
+                let suffix = path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                ensure!(
+                    !["docx", "pptx", "pdf", "png", "doc", "ppt"].contains(&suffix.as_str()),
+                    "Render creates a REVIEW DIRECTORY, not an edited document. Use output review-cv; use format_document to produce a new DOCX."
+                );
+            }
+            if operation == "format_document" {
+                ensure!(
+                    path.extension()
+                        .is_some_and(|value| value.eq_ignore_ascii_case("docx")),
+                    "Formatting output must be DOCX"
+                );
+            }
             if operation == "compose" {
                 ensure!(
                     matches!(
@@ -396,7 +474,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     if let Some(output) = &plan.request.output {
         plan.request.validate(workspace)?;
         let destination = workspace.resolve(output, true)?;
-        if plan.request.operation == "compose" {
+        if ["compose", "format_document"].contains(&plan.request.operation.as_str()) {
             let suffix = Path::new(output)
                 .extension()
                 .context("Missing output extension")?
@@ -416,7 +494,12 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
             file.write_all(&bytes)?;
             file.as_file().sync_all()?;
             workspace.resolve(output, true)?;
-            file.persist_noclobber(destination)?;
+            file.persist_noclobber(&destination)?;
+            ensure!(
+                sha(&bounded(&destination, 16 * 1024 * 1024)?)
+                    == result["sha256"].as_str().unwrap_or(""),
+                "Published artifact failed read-back verification"
+            );
         } else {
             let staged =
                 tempfile::tempdir_in(destination.parent().context("Missing review parent")?)?;
@@ -477,6 +560,18 @@ mod tests {
             );
         }
         fs::write(directory.path().join("input.json"), "{}").unwrap();
+        fs::write(directory.path().join("input.docx"), "fixture").unwrap();
+        let misleading: Request = serde_json::from_value(
+            json!({"operation":"render","input":"input.docx","output":"finished.docx"}),
+        )
+        .unwrap();
+        assert!(
+            misleading
+                .validate(&ws)
+                .unwrap_err()
+                .to_string()
+                .contains("DIRECTORY")
+        );
         fs::write(directory.path().join("out.docx"), "keep").unwrap();
         let request: Request = serde_json::from_value(
             json!({"operation":"compose","input":"input.json","output":"out.docx"}),

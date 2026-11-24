@@ -46,9 +46,16 @@ impl Tools {
         policy::authorize(name, read_only, web)?;
         let path = args["path"].as_str().unwrap_or(".");
         match name {
-            "design_tool" => Ok(Prepared::Review(Proposal::Design {
-                plan: Box::new(crate::design_tools::prepare(&self.workspace, args)?),
-            })),
+            "design_tool" | "colour_palette" | "colour_contrast" | "colour_extract"
+            | "inspect_document" | "format_document" | "render_document" | "compose_document" => {
+                Ok(Prepared::Review(Proposal::Design {
+                    plan: Box::new(crate::design_tools::prepare_named(
+                        &self.workspace,
+                        name,
+                        args,
+                    )?),
+                }))
+            }
             "research_sources" => Ok(Prepared::Output(research::list_sources(&self.workspace)?)),
             "task_history" => Ok(Prepared::Output(task_journal::recent_for(
                 &self.workspace,
@@ -161,6 +168,11 @@ impl Tools {
                 self.workspace.files(path, 250)?.join("\n"),
             )),
             "read_file" => {
+                if path.to_ascii_lowercase().ends_with(".docx") {
+                    bail!(
+                        "DOCX is a binary Office package, not UTF-8 text. Load professional-document-design, then use inspect_document input {path:?}. To improve formatting use format_document with a new DOCX output, then render to a review directory."
+                    );
+                }
                 let content = self.workspace.read(path)?;
                 self.observed.insert(path.into(), content.clone());
                 let start = args["start_line"].as_u64().unwrap_or(1).max(1) as usize;

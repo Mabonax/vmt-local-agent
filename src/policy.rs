@@ -35,7 +35,9 @@ pub fn classify(tool: &str) -> Result<Capability> {
         "write_file" | "edit_file" => Capability::ProjectWrite,
         "run_command" => Capability::Shell,
         "web_search" | "web_fetch" => Capability::Internet,
-        "mcp_tools" | "mcp_call" | "design_tool" => Capability::ExternalProcess,
+        "mcp_tools" | "mcp_call" | "design_tool" | "colour_palette" | "colour_contrast"
+        | "colour_extract" | "inspect_document" | "format_document" | "render_document"
+        | "compose_document" => Capability::ExternalProcess,
         "index_knowledge" | "remember_project" | "workflow_start" | "workflow_advance"
         | "workflow_finish" => Capability::LocalDataWrite,
         _ => bail!("Unregistered tool is forbidden by policy: {tool}"),

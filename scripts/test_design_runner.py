@@ -66,6 +66,42 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(UnidentifiedImageError):
             runner.run({'script': '', 'args': {'operation': 'extract'}})
 
+    def test_existing_cv_formatting_preserves_all_text_and_opaque_parts(self):
+        from docx import Document
+        from lxml import etree
+        document=Document()
+        document.add_paragraph('CV template', 'Title')
+        document.add_heading('Experience',1)
+        document.add_paragraph('[Job Title] | [Company] | [Year]')
+        document.add_paragraph('- Preserve every placeholder and word')
+        document.add_table(rows=1,cols=1).cell(0,0).text='Table source'
+        document.sections[0].header.paragraphs[0].text='Preserved header'
+        document.save('input')
+        inspected=runner.run({'args':{'operation':'inspect_document','input':'cv.docx'}})
+        self.assertEqual(inspected['paragraph_count'],4)
+        self.assertEqual(inspected['tables'],[[['Table source']]])
+        result=runner.run({'args':{'operation':'format_document','input':'cv.docx','output':'new.docx','preset':'cv','accent':'#007B7F'}})
+        self.assertTrue(result['content_preserved'])
+        self.assertNotEqual(result['sha256'],result['source_sha256'])
+        self.assertEqual(result['visual_review'],'PENDING')
+        with zipfile.ZipFile('input') as before,zipfile.ZipFile('artifact.docx') as after:
+            self.assertEqual(before.namelist(),after.namelist())
+            for name in before.namelist():
+                if name not in ['word/document.xml','word/styles.xml']:
+                    self.assertEqual(before.read(name),after.read(name))
+            ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            original=etree.fromstring(before.read('word/document.xml'))
+            formatted=etree.fromstring(after.read('word/document.xml'))
+            self.assertEqual(original.xpath('//w:t/text()',namespaces=ns),formatted.xpath('//w:t/text()',namespaces=ns))
+            self.assertIn('007B7F',after.read('word/document.xml').decode())
+
+    def test_existing_cv_rejects_unreadable_accent(self):
+        from docx import Document
+        Document().save('input')
+        with self.assertRaisesRegex(ValueError,'4.5:1'):
+            runner.run({'args':{'operation':'format_document','input':'cv.docx','output':'new.docx','accent':'#FFFFFF'}})
+        self.assertFalse(Path('artifact.docx').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

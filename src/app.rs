@@ -60,6 +60,7 @@ pub struct Desktop {
     skill_rows: Vec<crate::portable_skills::Row>,
     skill_source_input: String,
     pending_skill_library: Option<crate::portable_skills::Library>,
+    copied_response: Option<(usize, std::time::Instant)>,
 }
 
 impl Desktop {
@@ -129,6 +130,7 @@ impl Desktop {
             skill_rows: vec![],
             skill_source_input: String::new(),
             pending_skill_library: None,
+            copied_response: None,
         };
         app.refresh_files();
         app.refresh_models();
@@ -1077,9 +1079,16 @@ impl Desktop {
                         if user {
                             egui::Frame::new().fill(SURFACE).corner_radius(18).inner_margin(16).show(ui,|ui|{ui.set_max_width(width*0.88);render_message(ui,&entry.content);});
                         } else {
-                            ui.label(RichText::new(if entry.role=="error" {"Task needs attention"} else {"VMT Agent"}).strong().small().color(if entry.role=="error"{AMBER}else{MUTED})); ui.add_space(10.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(if entry.role=="error" {"Task needs attention"} else {"VMT Agent"}).strong().small().color(if entry.role=="error"{AMBER}else{MUTED}));
+                                let copied=self.copied_response.is_some_and(|(id,at)|id==index && at.elapsed()<Duration::from_secs(3));
+                                if ui.small_button(if copied {"Copied"} else {"Copy response"}).clicked() {
+                                    match vmt_local_agent::clipboard::copy(&entry.content) {Ok(())=>self.copied_response=Some((index,std::time::Instant::now())),Err(error)=>self.error=Some(format!("{error:#}"))}
+                                }
+                                if ui.small_button("Select text").clicked() {self.preview=Some(("Response text · Ctrl+A to select all, Ctrl+C to copy".into(),entry.content.clone()));}
+                            }); ui.add_space(10.0);
                             render_message(ui,&entry.content);
-                            ui.add_space(8.0); if ui.small_button("Copy").clicked(){ui.ctx().copy_text(entry.content.clone());}
+                            ui.add_space(8.0); if ui.small_button("Copy response").clicked(){match vmt_local_agent::clipboard::copy(&entry.content) {Ok(())=>self.copied_response=Some((index,std::time::Instant::now())),Err(error)=>self.error=Some(format!("{error:#}"))}}
                         }
                         ui.add_space(30.0);
                     });
@@ -1484,10 +1493,7 @@ impl Desktop {
                         edit_selected = Some(path.clone());
                     }
                     egui::ScrollArea::both().show(ui, |ui| {
-                        ui.add(
-                            egui::Label::new(RichText::new(content).monospace().size(12.0))
-                                .selectable(true),
-                        );
+                        selectable_response(ui, content, true);
                     });
                 });
             if !open {
@@ -1722,12 +1728,34 @@ fn render_block(ui: &mut egui::Ui, text: &str, code: bool) {
                     });
             });
     } else {
-        ui.add(
-            egui::Label::new(RichText::new(text).size(15.0).color(TEXT))
-                .wrap()
-                .selectable(true),
-        );
+        selectable_response(ui, text, false);
     }
+}
+fn selectable_response(ui: &mut egui::Ui, mut text: &str, code: bool) {
+    let response = ui.add(
+        egui::TextEdit::multiline(&mut text)
+            .desired_width(f32::INFINITY)
+            .desired_rows(1)
+            .frame(egui::Frame::NONE)
+            .font(if code {
+                egui::FontId::monospace(13.0)
+            } else {
+                egui::FontId::proportional(15.0)
+            })
+            .text_color(TEXT),
+    );
+    response.context_menu(|ui| {
+        if ui.button("Copy full text").clicked() {
+            match vmt_local_agent::clipboard::copy(text) {
+                Ok(()) => {
+                    ui.close();
+                }
+                Err(error) => {
+                    ui.label(format!("{error:#}"));
+                }
+            }
+        }
+    });
 }
 
 fn theme(ctx: &egui::Context) {

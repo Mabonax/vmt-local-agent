@@ -14,6 +14,12 @@ fn main() -> anyhow::Result<()> {
         .nth(2)
         .unwrap_or_else(|| "qwen3.5:4b".into());
     match model.as_str() {
+        "--document-task" => {
+            let input = std::env::args()
+                .nth(3)
+                .ok_or_else(|| anyhow::anyhow!("Provide model and original DOCX path"))?;
+            return vmt_local_agent::verification::document_task_check(&selected, &input);
+        }
         "--design-live" => {
             let source = std::env::args()
                 .nth(3)

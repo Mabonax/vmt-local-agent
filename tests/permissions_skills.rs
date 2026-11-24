@@ -291,4 +291,48 @@ fn actual_broker_uses_bounded_grants_and_portable_skills_without_running_scripts
     server.join().unwrap();
     assert_eq!(reviews, 1);
     assert_eq!(executed, 3);
+    // Regression: a fabricated success summary must not survive a failed Word
+    // read, and reading a different file must not erase that failed operation.
+    let actions = vec![
+        action("read_file", json!({"path":"CV.docx"})),
+        action("read_file", json!({"path":"hello.txt"})),
+        json!({"kind":"final","message":"The formatting improvements have been successfully applied."}),
+        json!({"kind":"final","message":"The formatting improvements have been successfully applied."}),
+        json!({"kind":"final","message":"The formatting improvements have been successfully applied."}),
+    ];
+    let (endpoint, stop, server) = runtime(actions);
+    let (tx, rx) = mpsc::channel();
+    agent::run(
+        Settings {
+            endpoint,
+            protocol: "json".into(),
+            max_steps: 12,
+            ..Default::default()
+        },
+        root.to_string_lossy().into(),
+        vec![ChatEntry {
+            role: "user".into(),
+            content: "Improve the formatting of this CV document.".into(),
+            ..Default::default()
+        }],
+        tx,
+        Arc::new(AtomicBool::new(false)),
+        eframe::egui::Context::default(),
+    );
+    stop.store(true, Ordering::Relaxed);
+    server.join().unwrap();
+    let events: Vec<_> = rx.try_iter().collect();
+    let final_text = events
+        .iter()
+        .find_map(|event| {
+            if let Event::Final(text) = event {
+                Some(text)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(final_text.starts_with("Task incomplete"));
+    assert!(final_text.contains("No verified formatted Word output"));
+    assert!(!final_text.contains("successfully applied"));
 }

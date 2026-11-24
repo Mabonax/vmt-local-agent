@@ -69,14 +69,14 @@ pub fn action_schema() -> Value {
     json!({"type":"object","properties":{
         "kind":{"type":"string","enum":["tool","final"]},
         "message":{"type":"string"},
-        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},
+        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","colour_palette","colour_contrast","colour_extract","inspect_document","format_document","render_document","compose_document","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},
         "args":{"type":"object","properties":{
             "path":{"type":"string"},"query":{"type":"string"},"content":{"type":"string"},
             "old":{"type":"string"},"new":{"type":"string"},"command":{"type":"string"},"url":{"type":"string"},
             "start_line":{"type":"integer"},"max_lines":{"type":"integer"},"id":{"type":"string"},
             "server":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object"},
             "model":{"type":"string"},"kind":{"type":"string"},"evidence":{"type":"string"},
-            "operation":{"type":"string"},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer"}
+            "operation":{"type":"string"},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer"},"preset":{"type":"string"},"accent":{"type":"string"}
         },"additionalProperties":false}
     },"required":["kind","message","tool","args"],"additionalProperties":false})
 }
@@ -122,10 +122,46 @@ fn tool_definitions(settings: &Settings) -> Value {
     }
     let definitions = [
         (
-            "design_tool",
-            "Run a reviewed local design adapter. Operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
-            json!({"operation":{"type":"string","enum":["palette","contrast","extract","compose","render"]},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":16}}),
-            vec!["operation"],
+            "colour_palette",
+            "Use Colour Intelligence to generate role colours and contrast checks. Load colour-intelligence first.",
+            json!({"seed":{"type":"string","description":"Six-digit seed colour #RRGGBB"},"mode":{"type":"string","enum":["analogous","monochromatic","complementary","split-complementary","triadic","tetradic","square"]},"theme":{"type":"string","enum":["light","dark"]}}),
+            vec!["seed"],
+        ),
+        (
+            "colour_contrast",
+            "Audit a foreground/background sRGB pair. Use this to check the chosen CV heading accent against white.",
+            json!({"foreground":{"type":"string"},"background":{"type":"string"}}),
+            vec!["foreground", "background"],
+        ),
+        (
+            "colour_extract",
+            "Extract dominant colours from an authorized project image PNG/JPEG/WebP.",
+            json!({"input":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":16}}),
+            vec!["input"],
+        ),
+        (
+            "inspect_document",
+            "Read actual body text, heading styles and tables from an EXISTING DOCX. Use instead of read_file for Word documents. Requires review.",
+            json!({"input":{"type":"string","description":"Existing project-relative DOCX file, for example CV_Template.docx"}}),
+            vec!["input"],
+        ),
+        (
+            "format_document",
+            "Improve formatting of an EXISTING DOCX while preserving every word, placeholder and other package parts. Load professional-document-design and use a colour_palette accent. Creates a real new DOCX, never overwrites. Requires review. Then render_document for visual review.",
+            json!({"input":{"type":"string","description":"Existing DOCX"},"output":{"type":"string","description":"New DOCX filename, for example CV_Template_Refined.docx"},"accent":{"type":"string","description":"One #RRGGBB heading colour from colour_palette; do not pass the whole roles object"},"preset":{"type":"string","enum":["cv"]}}),
+            vec!["input", "output", "accent"],
+        ),
+        (
+            "render_document",
+            "Render an existing DOCX/PPTX to images for review. This DOES NOT EDIT the document. Output is a NEW REVIEW DIRECTORY, never a .docx filename. You cannot claim visual review from render success alone.",
+            json!({"input":{"type":"string","description":"Existing DOCX/PPTX file"},"output":{"type":"string","description":"Required new review directory, for example review-cv; do not use a .docx extension"}}),
+            vec!["input", "output"],
+        ),
+        (
+            "compose_document",
+            "Create a NEW editable DOCX/PPTX from the baseline JSON content contract. For an existing Word CV use format_document instead. Requires review.",
+            json!({"input":{"type":"string","description":"Existing input JSON file"},"output":{"type":"string","description":"New DOCX/PPTX file"}}),
+            vec!["input", "output"],
         ),
         (
             "research_sources",
@@ -285,9 +321,9 @@ fn tool_definitions(settings: &Settings) -> Value {
         ),
     ];
     Value::Array(definitions.into_iter().filter(|(name,..)| {
-        (!settings.read_only || !["write_file","edit_file","run_command","design_tool","remember_project","mcp_tools","mcp_call","index_knowledge","workflow_start","workflow_advance","workflow_finish"].contains(name))
+        (!settings.read_only || crate::policy::classify(name).is_ok_and(|capability|capability==crate::policy::Capability::Read))
             && (settings.web_enabled || !name.starts_with("web_"))
-    }).map(|(name,description,properties,required)|json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required}}})).collect())
+    }).map(|(name,description,properties,required)|json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}})).collect())
 }
 
 pub fn next_turn(
@@ -518,6 +554,36 @@ pub fn compact(messages: &mut Vec<Value>, limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn document_functions_require_clear_inputs_and_are_hidden_when_readonly() {
+        let definitions = tool_definitions(&Settings::default());
+        for name in ["format_document", "render_document"] {
+            let function = &definitions
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|value| value["function"]["name"] == name)
+                .unwrap()["function"];
+            assert!(
+                function["parameters"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("input"))
+            );
+            assert!(
+                function["parameters"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("output"))
+            );
+        }
+        let readonly = tool_definitions(&Settings {
+            read_only: true,
+            ..Default::default()
+        });
+        assert!(!readonly.to_string().contains("format_document"));
+        assert!(!readonly.to_string().contains("colour_palette"));
+    }
     #[test]
     fn remote_model_endpoints_are_rejected() {
         for s in [
