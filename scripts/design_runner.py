@@ -1026,13 +1026,48 @@ def vision_inspect(args):
             'unload_requested':True,'limitation':'Model observations may be wrong. No automatic acceptance or correction.'}
 
 
+def canonical_scene_sha256(scene):
+    return hashlib.sha256(json.dumps(scene,sort_keys=True,separators=(',',':'),
+                                     ensure_ascii=True,allow_nan=False).encode('ascii')).hexdigest()
+
+
+def validate_review_link(scene, link):
+    """Consistency checks on supplied records, not authentication of their author."""
+    if not isinstance(link,dict) or set(link)!={'render','vision'}:
+        raise ValueError('Invalid provenance link')
+    render,vision = link['render'],link['vision']
+    if not isinstance(render,dict) or not isinstance(vision,dict):
+        raise ValueError('Invalid provenance records')
+    def digest(value):
+        if not isinstance(value,str) or not re.fullmatch(r'[0-9a-f]{64}',value):
+            raise ValueError('Invalid provenance digest')
+        return value
+    scene_hash = canonical_scene_sha256(scene)
+    if digest(render.get('canonical_scene_sha256'))!=scene_hash:
+        raise ValueError('Scene changed since rendering')
+    if render.get('artifact_format')!='png':
+        raise ValueError('Visual link requires a rendered PNG')
+    artifact_hash = digest(render.get('sha256'))
+    if digest(vision.get('source_sha256'))!=artifact_hash:
+        raise ValueError('Vision review refers to a different image')
+    if vision.get('mode')!='design_review' or vision.get('visual_review')!='ADVISORY_ONLY':
+        raise ValueError('Expected advisory design review')
+    report = vision.get('structured_review')
+    if not isinstance(report,dict):
+        raise ValueError('Missing structured review')
+    return {'status':'CONSISTENT_UNAUTHENTICATED','scene_sha256':scene_hash,
+            'artifact_sha256':artifact_hash,'review':{'summary':report['summary'],'findings':report['findings']}}
+
+
 def scene_repair_plan(data):
     """Propose changes only; visual suggestions are never executed."""
     from copy import deepcopy
-    if not isinstance(data,dict) or set(data)!={'scene','review'}:
-        raise ValueError('Expected scene and advisory review')
+    if not isinstance(data,dict) or set(data) not in ({'scene','review'},{'scene','link'}):
+        raise ValueError('Expected scene and advisory review or provenance link')
     original = data['scene']
-    review = parse_visual_findings(json.dumps(data['review']))
+    provenance = validate_review_link(original,data['link']) if 'link' in data else {'status':'UNBOUND'}
+    raw_review = provenance.pop('review') if 'link' in data else data['review']
+    review = parse_visual_findings(json.dumps(raw_review))
     before = scene_check(original)
     candidate = deepcopy(original)
     w,h = original['width'],original['height']
@@ -1087,10 +1122,12 @@ def scene_repair_plan(data):
     if content_signature(original)!=content_signature(candidate):
         raise ValueError('Repair altered source content')
     return {'scene':candidate,'changes':changes,'matches':matches,
-            'before':before,'after':current,
+            'before':before,'after':current,'provenance':provenance,
+            'original_scene_sha256':canonical_scene_sha256(original),
+            'candidate_scene_sha256':canonical_scene_sha256(candidate),
             'status':'PROPOSAL_ONLY' if changes else 'MANUAL_REVIEW_REQUIRED',
             'visual_review':'PENDING','human_acceptance_required':True,
-            'limitation':'Visual regions are advisory, not proof of object identity. No image binding or automatic execution. Only deterministic contrast and text overflow repairs are proposed.'}
+            'limitation':'Visual regions are advisory, not proof of object identity. Supplied hash links establish consistency only, not authenticity. No automatic execution. Only deterministic contrast and text overflow repairs are proposed.'}
 
 
 def run(request):
@@ -1123,7 +1160,8 @@ def run(request):
         export = {} if suffix == '.svg' else export_vector_scene(source,output,data['width'],data['height'])
         return {'created':args['output'],'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),
                 'geometry_review':review,'visual_review':'PENDING',
-                'scene_sha256':hashlib.sha256(Path('input').read_bytes()).hexdigest(),**export}
+                'scene_sha256':hashlib.sha256(Path('input').read_bytes()).hexdigest(),
+                'canonical_scene_sha256':canonical_scene_sha256(data),'artifact_format':suffix[1:],**export}
     if operation == 'layout_arrange':
         return layout_arrange(json.loads(Path('input').read_text(encoding='utf-8-sig')))
     if operation in ('layout_grid', 'layout_check'):

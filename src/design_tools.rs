@@ -749,7 +749,8 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         );
         std::thread::sleep(Duration::from_millis(20));
     }
-    let result: Value = serde_json::from_slice(&data).context("Invalid design worker response")?;
+    let mut result: Value =
+        serde_json::from_slice(&data).context("Invalid design worker response")?;
     ensure!(
         child.0.try_wait()?.is_some_and(|status| status.success()) && result.get("error").is_none(),
         "Design operation failed: {}",
@@ -821,6 +822,16 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
             }
         }
     }
+    result["broker_provenance"] = json!({
+        "version": 1,
+        "operation": plan.request.operation,
+        "input_sha256": plan.input_sha256,
+        "asset_sha256": plan.asset_hashes,
+        "skill_sha256": plan.fingerprint,
+        "python_sha256": plan.runtime.python_sha256,
+        "renderer_sha256": plan.runtime.soffice_sha256,
+        "worker_sha256": sha(include_str!("../scripts/design_runner.py").as_bytes()),
+    });
     Ok(serde_json::to_string_pretty(&result)?)
 }
 

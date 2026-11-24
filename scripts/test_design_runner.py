@@ -446,6 +446,24 @@ class DesignRunnerTests(unittest.TestCase):
         self.assertEqual(result['changes'],[])
         self.assertEqual(result['status'],'MANUAL_REVIEW_REQUIRED')
 
+    def test_scene_provenance_rejects_stale_records(self):
+        from copy import deepcopy
+        scene = {'width':300,'height':200,'elements':[{'id':'box','kind':'rect','x':10,'y':10,'w':40,'h':40,'fill':'#000000'}]}
+        link = {'render':{'canonical_scene_sha256':runner.canonical_scene_sha256(scene),
+                          'artifact_format':'png','sha256':'a'*64},
+                'vision':{'source_sha256':'a'*64,'mode':'design_review','visual_review':'ADVISORY_ONLY',
+                          'structured_review':{'summary':'No visible defects','findings':[]}}}
+        result = runner.scene_repair_plan({'scene':scene,'link':link})
+        self.assertEqual(result['provenance']['status'],'CONSISTENT_UNAUTHENTICATED')
+        self.assertEqual(result['original_scene_sha256'],result['candidate_scene_sha256'])
+        changed = deepcopy(scene)
+        changed['elements'][0]['x']=11
+        with self.assertRaises(ValueError):
+            runner.scene_repair_plan({'scene':changed,'link':link})
+        link['vision']['source_sha256']='b'*64
+        with self.assertRaises(ValueError):
+            runner.scene_repair_plan({'scene':scene,'link':link})
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
