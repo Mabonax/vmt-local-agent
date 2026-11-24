@@ -23,3 +23,4 @@ jobs:
       - run: python -m pip install -r tool-packs/office/requirements.txt -r tool-packs/pdf/requirements.txt
       - run: python -B tool-packs/check_packs.py
       - run: python -B -m unittest discover -s tool-packs -p test_runtime.py
+      - run: python -B -m unittest discover -s tool-packs -p test_artifacts.py
