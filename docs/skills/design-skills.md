@@ -187,3 +187,6 @@ The optional svg_compose `assets` array is approved with the scene, with four as
 
 ## Creative templates V1
 `template_plan` returns editable scene JSON for poster, square social graphic, business card or landscape certificate briefs. `scene_check` returns geometry, conservative text contrast and measured wrapping findings. Both use reviewed 64 KiB JSON inputs and produce advisory results, not files. Save the scene through the ordinary reviewed file tool and render through svg_compose with separately approved assets. Template text is never silently shortened; crowded layouts may require correction. The worker does not certify design aesthetics or accessibility. These are reusable planning primitives, not full workflow orchestration.
+
+## Creative Director V1
+`creative_plan` takes the existing creative template brief as reviewed JSON. It produces three typography variants, applies up to two bounded text-overflow repairs per candidate, preserves content and reports every size change. Candidates are ranked by count of deterministic findings, not visual appeal. It returns scene JSON and status READY_FOR_RENDER_REVIEW or NEEDS_REVISION. Rendering and asset approvals remain separate, and no persistent workflow or visual certification is claimed. No new dependencies are required.

@@ -334,6 +334,23 @@ class DesignRunnerTests(unittest.TestCase):
             result = runner.scene_check(plan['scene'])
             self.assertTrue(any(i['type']=='low_text_contrast' for i in result['findings']))
 
+    def test_creative_director_preserves_content_and_ranks(self):
+        from unittest.mock import patch
+        from PIL import ImageFont
+        face = ImageFont.load_default(size=48)
+        brief = {'template':'poster','title':'Creative work','subtitle':'Original wording','footer':'Register today'}
+        with patch.object(runner,'reviewed_font',return_value='unused'), patch.object(ImageFont,'truetype',return_value=face):
+            Path('input').write_text(json.dumps(brief))
+            result = runner.run({'args':{'operation':'creative_plan'}})
+            self.assertEqual(len(result['candidates']),3)
+            self.assertEqual(result['visual_review'],'PENDING')
+            counts = [c['issue_count'] for c in result['candidates']]
+            self.assertEqual(counts,sorted(counts))
+            for candidate in result['candidates']:
+                strings = [e['text'] for e in candidate['scene']['elements'] if e['kind']=='text']
+                self.assertEqual(strings,[brief['title'],brief['subtitle'],brief['footer']])
+                self.assertTrue(all(e['size']>=11 for e in candidate['scene']['elements'] if e['kind']=='text'))
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

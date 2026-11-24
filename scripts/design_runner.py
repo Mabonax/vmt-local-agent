@@ -843,9 +843,61 @@ def scene_check(scene):
             'limitation':'Bounding boxes and estimated text contrast/fit only; no aesthetic or accessibility certification.'}
 
 
+def creative_plan(brief):
+    """Deterministic candidate planning; no external tools or user asset access."""
+    from copy import deepcopy
+    if not isinstance(brief,dict):
+        raise ValueError('Invalid brief')
+    base = template_plan(brief)
+    candidates = []
+    # Preserve supplied content and brand colours; vary only supported typography.
+    for name,factor in (('standard',1.0),('compact',.90),('expanded',1.08)):
+        scene = deepcopy(base['scene'])
+        changes = []
+        for element in scene['elements']:
+            if element['kind'] != 'text':
+                continue
+            original = element['size']
+            minimum = 9 if base['template']=='business_card' else 11
+            updated = max(minimum,min(72,round(original*factor,2)))
+            if updated != original:
+                element['size'] = updated
+                changes.append({'id':element['id'],'property':'size','before':original,'after':updated})
+        review = scene_check(scene)
+        # Bounded repair only for text overflow; never delete or shorten content.
+        for attempt in range(2):
+            overflow = {issue['id'] for issue in review['findings'] if issue['type']=='estimated_text_overflow'}
+            if not overflow:
+                break
+            altered = False
+            for element in scene['elements']:
+                if element['id'] not in overflow or element['kind']!='text':
+                    continue
+                original = element['size']
+                minimum = 9 if base['template']=='business_card' else 11
+                updated = max(minimum,round(original*.9,2))
+                if updated < original:
+                    element['size'] = updated
+                    changes.append({'id':element['id'],'property':'size','before':original,'after':updated,'reason':'estimated_text_overflow'})
+                    altered = True
+            if not altered:
+                break
+            review = scene_check(scene)
+        issues = review['geometry']['issue_count']+len(review['findings'])
+        candidates.append({'variant':name,'scene':scene,'review':review,'issue_count':issues,'changes':changes})
+    # Prefer the original design among equally valid candidates. This is not an aesthetic score.
+    candidates.sort(key=lambda c:c['issue_count'])
+    return {'template':base['template'],'colour_repairs':base['colour_repairs'],
+            'candidates':candidates,'selected':candidates[0]['variant'],
+            'status':'READY_FOR_RENDER_REVIEW' if candidates[0]['issue_count']==0 else 'NEEDS_REVISION',
+            'visual_review':'PENDING','limitation':'Ranks geometric and text findings only, not aesthetics. Asset approval and rendering remain separate.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation == 'creative_plan':
+        return creative_plan(json.loads(Path('input').read_text(encoding='utf-8-sig')))
     if operation in ('template_plan','scene_check'):
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         return template_plan(data) if operation == 'template_plan' else scene_check(data)
