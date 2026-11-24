@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 ROOT=pathlib.Path(__file__).resolve().parent
-TRUSTED=("foundation","analysis","documents","repository")
+TRUSTED=("foundation","analysis","documents","repository","office")
 LIMIT=1048576
 
 def validate(value, schema):
@@ -28,6 +28,10 @@ def validate(value, schema):
     elif t=="string":
         if type(value) is not str or not schema.get("minLength",0)<=len(value)<=schema.get("maxLength",100000): raise ValueError("Invalid string")
         if "pattern" in schema and not re.fullmatch(schema["pattern"],value): raise ValueError("Invalid pattern")
+    elif t=="scalar":
+        if value is not None and type(value) not in (str,bool,int,float): raise ValueError("Invalid scalar")
+        if type(value) is str and len(value)>500: raise ValueError("Invalid string")
+        if type(value) in (int,float) and not math.isfinite(value): raise ValueError("Invalid number")
     elif t=="number":
         if type(value) not in (int,float) or not math.isfinite(value): raise ValueError("Invalid number")
     else: raise ValueError("Unsupported schema")
