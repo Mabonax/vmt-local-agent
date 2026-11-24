@@ -11,6 +11,7 @@ import ssl
 import time
 from html.parser import HTMLParser
 from urllib.parse import urlsplit, urljoin
+from evidence import SCHEMAS as EVIDENCE_SCHEMAS, EvidenceStore
 
 def obj(props):
     return {"type":"object","properties":props,"required":list(props),"additionalProperties":False}
@@ -117,11 +118,20 @@ def extract(html,url):
     return {"title":" ".join("".join(p.titles).split())[:300],"text":text[:30000],"links":p.links,"truncated":len(text)>30000,"trust":"untrusted_external_content"}
 
 class ResearchHost:
-    def __init__(self,delegate,allowed_hosts):
+    def __init__(self,delegate,allowed_hosts,evidence=None):
         self._delegate=delegate
         self._hosts=frozenset(allowed_hosts)
+        self._evidence=evidence if evidence is not None else EvidenceStore()
     def call(self,name,args,previous=None):
+        if name in EVIDENCE_SCHEMAS:
+            if previous is not None or type(args) is not dict or set(args)!=set(EVIDENCE_SCHEMAS[name]["properties"]): raise ValueError("Invalid evidence request")
+            if name=="research.sources": result={"sources":self._evidence.sources()}
+            elif name=="research.find": result={"passages":self._evidence.find(args["query"],args["limit"])}
+            else: result=self._evidence.citation(args["source_id"],args["start"],args["end"])
+            return {"ok":True,"result":result}
         if name not in SCHEMAS: return self._delegate.call(name,args,previous=previous)
         if previous is not None or type(args) is not dict or set(args)!=set(SCHEMAS[name]["properties"]): raise ValueError("Invalid research request")
         result=fetch(args["url"],self._hosts) if name=="web.fetch" else extract(args["html"],args["url"])
+        if name=="web.fetch":
+            result={**result,**self._evidence.register_fetch(result)}
         return {"ok":True,"result":result}
