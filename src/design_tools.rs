@@ -109,6 +109,7 @@ pub fn status(id: &str) -> &'static str {
         "layout-intelligence",
         "vector-graphics",
         "image-intelligence",
+        "creative-templates",
     ]
     .contains(&id)
     {
@@ -122,7 +123,9 @@ pub fn status(id: &str) -> &'static str {
     }
 }
 pub fn integration_note(id: &str) -> &'static str {
-    if id == "image-intelligence" {
+    if id == "creative-templates" {
+        "\nUse design_tool template_plan and scene_check with reviewed project JSON. Plans are advisory, and actual rendering remains a separate operation."
+    } else if id == "image-intelligence" {
         "\nUse design_tool image_inspect, image_prepare or image_adjust with a reviewed local raster image. Preparation preserves aspect ratio and never overwrites the source."
     } else if id == "vector-graphics" {
         "\nUse design_tool svg_compose with a reviewed JSON scene and a new SVG, PNG or PDF output. Native shapes and text remain editable. No raw SVG markup or external resources."
@@ -151,7 +154,11 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ["image_inspect", "image_prepare", "image_adjust"].contains(&self.operation.as_str()) {
+        if ["template_plan", "scene_check"].contains(&self.operation.as_str()) {
+            ("creative-templates", "SKILL.md")
+        } else if ["image_inspect", "image_prepare", "image_adjust"]
+            .contains(&self.operation.as_str())
+        {
             ("image-intelligence", "SKILL.md")
         } else if self.operation == "svg_compose" {
             ("vector-graphics", "SKILL.md")
@@ -179,6 +186,7 @@ impl Request {
                 || operation == "compose_v2"
                 || ["type_scale", "measure_text"].contains(&operation)
                 || ["layout_grid", "layout_check", "layout_arrange"].contains(&operation)
+                || ["template_plan", "scene_check"].contains(&operation)
                 || operation == "svg_compose"
                 || ["image_inspect", "image_prepare", "image_adjust"].contains(&operation),
             "Unregistered design operation"
@@ -188,7 +196,7 @@ impl Request {
             "palette" => &["seed", "mode", "theme"],
             "contrast" => &["foreground", "background"],
             "extract" => &["input", "count"],
-            "image_inspect" => &["input"],
+            "image_inspect" | "template_plan" | "scene_check" => &["input"],
             "svg_compose" => &["input", "output", "assets"],
             "image_prepare" => &["input", "output", "width", "height", "mode"],
             "image_adjust" => &["input", "output", "mode", "amount"],
@@ -351,6 +359,8 @@ impl Request {
             "image_inspect",
             "image_prepare",
             "image_adjust",
+            "template_plan",
+            "scene_check",
         ]
         .contains(&operation)
         {
@@ -364,7 +374,7 @@ impl Request {
                 .to_ascii_lowercase();
             let extensions: &[&str] = match operation {
                 "compose" | "compose_v2" | "layout_grid" | "layout_check" | "layout_arrange"
-                | "svg_compose" => &["json"],
+                | "svg_compose" | "template_plan" | "scene_check" => &["json"],
                 "extract" | "image_inspect" | "image_prepare" | "image_adjust" => {
                     &["png", "jpg", "jpeg", "webp"]
                 }
@@ -481,6 +491,8 @@ impl Request {
                             | "layout_check"
                             | "layout_arrange"
                             | "svg_compose"
+                            | "template_plan"
+                            | "scene_check"
                     ) {
                         64 * 1024
                     } else {

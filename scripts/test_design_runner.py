@@ -318,6 +318,22 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.svg_compose(scene,Path('bad.svg'),1)
 
+    def test_creative_templates_and_scene_review(self):
+        from unittest.mock import patch
+        from PIL import ImageFont
+        face = ImageFont.load_default(size=48)
+        with patch.object(runner,'reviewed_font',return_value='unused'), patch.object(ImageFont,'truetype',return_value=face):
+            for name in ('poster','social','business_card','certificate'):
+                plan = runner.template_plan({'template':name,'title':'Example','primary':'#EEEEEE'})
+                self.assertEqual(len(plan['colour_repairs']),1)
+                self.assertEqual(plan['review']['geometry']['issue_count'],0)
+                self.assertEqual(plan['review']['visual_review'],'PENDING')
+            plan = runner.template_plan({'template':'social','title':'Example','asset':0})
+            self.assertTrue(any(e['kind']=='image' for e in plan['scene']['elements']))
+            plan['scene']['elements'][-1]['fill'] = '#FFFFFF'
+            result = runner.scene_check(plan['scene'])
+            self.assertTrue(any(i['type']=='low_text_contrast' for i in result['findings']))
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

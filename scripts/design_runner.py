@@ -727,9 +727,128 @@ def image_adjust(args):
             'limitation':'Deterministic adjustments in decoded RGB; no ICC conversion, subject recognition or aesthetic assessment.'}
 
 
+def template_plan(brief):
+    if not isinstance(brief,dict) or set(brief)-{'template','title','subtitle','footer','primary','accent','background','asset'}:
+        raise ValueError('Invalid creative brief')
+    name = brief['template']
+    formats = {'poster':(595,842),'social':(540,540),'business_card':(255,156),'certificate':(842,595)}
+    if name not in formats:
+        raise ValueError('Unknown template')
+    w,h = formats[name]
+    title = text(brief['title'],180)
+    if not title.strip():
+        raise ValueError('Title required')
+    subtitle = text(brief.get('subtitle',''),400)
+    footer = text(brief.get('footer',''),160)
+    colours = {k:brief.get(k,v) for k,v in [('primary','#172B45'),('accent','#087F83'),('background','#FFFFFF')]}
+    for value in colours.values():
+        if not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value):
+            raise ValueError('Invalid template colour')
+    bg = colours['background']
+    primary = colours['primary']
+    repairs = []
+    if contrast_ratio(primary,bg)<4.5:
+        primary = max(('#000000','#FFFFFF'),key=lambda c:contrast_ratio(c,bg))
+        repairs.append({'role':'primary','before':colours['primary'],'after':primary})
+    m = 12 if name=='business_card' else 32
+    inner = w-2*m
+    elements = []
+    def rect(id,x,y,ew,eh,fill):
+        elements.append({'id':id,'kind':'rect','x':x,'y':y,'w':ew,'h':eh,'fill':fill})
+    def label(id,value,x,y,ew,eh,size,weight='normal'):
+        if value.strip():
+            elements.append({'id':id,'kind':'text','x':x,'y':y,'w':ew,'h':eh,'text':value,'size':size,'weight':weight,'fill':primary})
+    rect('accent',m,m,min(inner,54),4,colours['accent'])
+    asset = brief.get('asset')
+    if asset is not None and (type(asset) is not int or not 0<=asset<=3 or name=='certificate'):
+        raise ValueError('Invalid template asset')
+    if name=='business_card':
+        if asset is not None:
+            elements.append({'id':'logo','kind':'image','asset':asset,'fit':'contain','x':w-m-48,'y':m,'w':48,'h':36})
+        label('title',title,m,24,inner-(54 if asset is not None else 0),42,16,'bold')
+        label('subtitle',subtitle,m,72,inner,34,10)
+        label('footer',footer,m,112,inner,30,9)
+    elif name=='certificate':
+        label('title',title,m,90,inner,125,36,'bold')
+        label('subtitle',subtitle,m,235,inner,190,20)
+        label('footer',footer,m,465,inner,85,14)
+    else:
+        top = 52
+        if asset is not None:
+            image_h = round(h*.33)
+            elements.append({'id':'hero','kind':'image','asset':asset,'fit':'cover','x':m,'y':top,'w':inner,'h':image_h})
+            top += image_h+16
+        label('title',title,m,top,inner,round(h*.20),36 if name=='poster' else 28,'bold')
+        top += round(h*.20)+12
+        footer_h = 55 if name=='poster' else 42
+        label('subtitle',subtitle,m,top,inner,h-m-footer_h-12-top,16 if name=='poster' else 13)
+        label('footer',footer,m,h-m-footer_h,inner,footer_h,11)
+    scene = {'width':w,'height':h,'background':bg,'elements':elements}
+    return {'scene':scene,'template':name,'colour_repairs':repairs,
+            'review':scene_check(scene),'limitation':'Template plan only; verify text fit, asset indices and rendered output before delivery.'}
+
+
+def scene_check(scene):
+    if not isinstance(scene,dict) or set(scene)-{'width','height','background','elements'}:
+        raise ValueError('Invalid scene')
+    elements = scene['elements']
+    if not isinstance(elements,list) or not 1<=len(elements)<=64:
+        raise ValueError('Invalid elements')
+    geom = layout_check({'width':scene['width'],'height':scene['height'],
+                         'elements':[{k:e[k] for k in ('id','x','y','w','h')} for e in elements]})
+    bg = scene.get('background','#FFFFFF')
+    if not isinstance(bg,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',bg):
+        raise ValueError('Invalid background')
+    findings = []
+    for i,e in enumerate(elements):
+        if e.get('kind')!='text':
+            continue
+        colour = e.get('fill')
+        # Overlapping preceding objects may change the actual text background.
+        overlaps = any(min(e['x']+e['w'],p['x']+p['w'])>max(e['x'],p['x']) and
+                       min(e['y']+e['h'],p['y']+p['h'])>max(e['y'],p['y']) for p in elements[:i])
+        if overlaps or e.get('opacity',1)!=1 or not isinstance(colour,str):
+            findings.append({'id':e['id'],'type':'contrast_requires_visual_review'})
+        elif not re.fullmatch(r'#[0-9a-fA-F]{6}',colour):
+            raise ValueError('Invalid text colour')
+        elif contrast_ratio(colour,bg)<4.5:
+            findings.append({'id':e['id'],'type':'low_text_contrast','ratio':round(contrast_ratio(colour,bg),2)})
+        font = e.get('font','Arial' if os.name=='nt' else 'Liberation Sans')
+        value = text(e['text'],1600)
+        # Check only supported sizes; scene serializer performs definitive input validation.
+        size = bounded_number(e.get('size',12),8,72)
+        from PIL import ImageFont
+        face = ImageFont.truetype(reviewed_font(font),round(size*4))
+        ascent,descent = face.getmetrics()
+        factor = 1.15 if e.get('weight')=='bold' else 1.05
+        count = 0
+        too_wide = False
+        for paragraph in value.split('\n'):
+            line = ''
+            for word in paragraph.split():
+                if face.getlength(word)/4*factor>e['w']:
+                    too_wide = True
+                candidate = (line+' '+word).strip()
+                if line and face.getlength(candidate)/4*factor>e['w']:
+                    count += 1
+                    line = word
+                else:
+                    line = candidate
+            count += 1
+        spacing = max((ascent+descent)/4,size*bounded_number(e.get('line_height',1.25),1,2))
+        if too_wide or count>24 or (ascent+descent)/4+(count-1)*spacing>e['h']:
+            findings.append({'id':e['id'],'type':'estimated_text_overflow'})
+    return {'status':'REVIEW_REQUIRED' if findings or geom['issue_count'] else 'PASS',
+            'geometry':geom,'findings':findings,'visual_review':'PENDING',
+            'limitation':'Bounding boxes and estimated text contrast/fit only; no aesthetic or accessibility certification.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation in ('template_plan','scene_check'):
+        data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
+        return template_plan(data) if operation == 'template_plan' else scene_check(data)
     if operation == 'image_inspect':
         _, info = open_reviewed_image()
         return info
