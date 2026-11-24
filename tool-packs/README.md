@@ -42,3 +42,6 @@ Install dependencies explicitly using `python -m pip install -r tool-packs/offic
 
 ## PDF engineering V1
 Five tools generate, inspect, extract embedded text, select pages and merge small PDFs. Install the PDF requirements explicitly. Page numbers are one-based; raw PDFs are capped at 500000 bytes and 50 pages, and requests at 1 MiB. Generation supports Latin-1 text only. Extraction is not OCR. Merge/split exclude page annotations and actions but are NOT sanitizers; treat resulting files as untrusted. PDF parsing is a complex dependency boundary requiring OS-enforced isolation and hard resource limits before processing untrusted documents in production. No rendering, visual inspection, Office conversion or redaction yet.
+
+## Artifact quality V1
+Four deterministic tools inspect artifact containers, hash bytes, and check supplied rectangles for clipping or overlap. ZIP inspection checks CRC and required parts, not full OOXML validity or safety. PDF inspection checks parser readability. Geometry must be supplied by the host or renderer; intersections may be intentional and do not establish visual defects. No visual rendering, font measurement, or automatic correction is provided by this pack. Uses the existing PDF dependencies. Treat all binary parsing as an isolation boundary.
