@@ -271,6 +271,38 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.image_prepare({'width':100,'height':100,'mode':'stretch','output':'bad.png'})
 
+    def test_image_adjust_preserves_alpha_and_source(self):
+        from PIL import Image
+        Image.new('RGBA',(60,40),(100,80,60,180)).save('input',format='PNG')
+        source = Path('input').read_bytes()
+        args = {'operation':'image_adjust','output':'out.png','mode':'brightness','amount':150}
+        runner.run({'args':args})
+        with Image.open('artifact.png') as im:
+            self.assertEqual(im.getpixel((10,10)),(150,120,90,180))
+        runner.run({'args':{'operation':'image_adjust','output':'out.png','mode':'grayscale'}})
+        with Image.open('artifact.png') as im:
+            r,g,b,a = im.getpixel((10,10))
+            self.assertEqual(r,g)
+            self.assertEqual(g,b)
+            self.assertEqual(a,180)
+        self.assertEqual(Path('input').read_bytes(),source)
+
+    def test_image_adjust_masks_and_bounds(self):
+        from PIL import Image
+        Image.new('RGBA',(60,40),(100,80,60,180)).save('input',format='PNG')
+        result = runner.run({'args':{'operation':'image_adjust','output':'out.png','mode':'circle'}})
+        self.assertEqual((result['width'],result['height']),(40,40))
+        with Image.open('artifact.png') as im:
+            self.assertEqual(im.getpixel((0,0))[3],0)
+            self.assertEqual(im.getpixel((20,20))[3],180)
+        for args in (
+            {'mode':'rounded','amount':51,'output':'bad.png'},
+            {'mode':'circle','output':'bad.jpg'},
+            {'mode':'brightness','amount':201,'output':'bad.png'},
+        ):
+            with self.assertRaises(ValueError):
+                runner.image_adjust(args)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

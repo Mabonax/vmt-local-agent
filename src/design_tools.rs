@@ -42,6 +42,7 @@ pub struct Request {
     pub size: Option<u8>,
     pub width: Option<u16>,
     pub height: Option<u16>,
+    pub amount: Option<u16>,
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -120,7 +121,7 @@ pub fn status(id: &str) -> &'static str {
 }
 pub fn integration_note(id: &str) -> &'static str {
     if id == "image-intelligence" {
-        "\nUse design_tool image_inspect or image_prepare with a reviewed local raster image. Preparation preserves aspect ratio and never overwrites the source."
+        "\nUse design_tool image_inspect, image_prepare or image_adjust with a reviewed local raster image. Preparation preserves aspect ratio and never overwrites the source."
     } else if id == "vector-graphics" {
         "\nUse design_tool svg_compose with a reviewed JSON scene and a new SVG, PNG or PDF output. Native shapes and text remain editable. No raw SVG markup or external resources."
     } else if id == "layout-intelligence" {
@@ -148,7 +149,9 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ["image_inspect", "image_prepare"].contains(&self.operation.as_str()) {
+        if ["image_inspect", "image_prepare", "image_adjust"]
+            .contains(&self.operation.as_str())
+        {
             ("image-intelligence", "SKILL.md")
         } else if self.operation == "svg_compose" {
             ("vector-graphics", "SKILL.md")
@@ -177,7 +180,7 @@ impl Request {
                 || ["type_scale", "measure_text"].contains(&operation)
                 || ["layout_grid", "layout_check", "layout_arrange"].contains(&operation)
                 || operation == "svg_compose"
-                || ["image_inspect", "image_prepare"].contains(&operation),
+                || ["image_inspect", "image_prepare", "image_adjust"].contains(&operation),
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -187,6 +190,7 @@ impl Request {
             "extract" => &["input", "count"],
             "image_inspect" => &["input"],
             "image_prepare" => &["input", "output", "width", "height", "mode"],
+            "image_adjust" => &["input", "output", "mode", "amount"],
             "repair" | "distance" => &["foreground", "background"],
             "gradient" => &["foreground", "background", "count"],
             "categorical" => &["seed", "count"],
@@ -290,6 +294,36 @@ impl Request {
                 "Unsupported point size or width"
             );
         }
+        if operation == "image_adjust" {
+            ensure!(
+                matches!(
+                    self.mode.as_deref(),
+                    Some(
+                        "brightness"
+                            | "contrast"
+                            | "saturation"
+                            | "sharpness"
+                            | "grayscale"
+                            | "circle"
+                            | "rounded"
+                    )
+                ),
+                "Unsupported image adjustment"
+            );
+            ensure!(
+                self.amount.unwrap_or(100) <= 200,
+                "Adjustment exceeds limit"
+            );
+            if matches!(self.mode.as_deref(), Some("grayscale" | "circle")) {
+                ensure!(self.amount.is_none(), "This mode takes no amount");
+            }
+            if self.mode.as_deref() == Some("rounded") {
+                ensure!(
+                    self.amount.unwrap_or(20) <= 50,
+                    "Radius percentage must be 0-50"
+                );
+            }
+        }
         if operation == "image_prepare" {
             ensure!(
                 (16..=4096).contains(&self.width.unwrap_or(0))
@@ -318,6 +352,7 @@ impl Request {
             "svg_compose",
             "image_inspect",
             "image_prepare",
+            "image_adjust",
         ]
         .contains(&operation)
         {
@@ -332,7 +367,9 @@ impl Request {
             let extensions: &[&str] = match operation {
                 "compose" | "compose_v2" | "layout_grid" | "layout_check" | "layout_arrange"
                 | "svg_compose" => &["json"],
-                "extract" | "image_inspect" | "image_prepare" => &["png", "jpg", "jpeg", "webp"],
+                "extract" | "image_inspect" | "image_prepare" | "image_adjust" => {
+                    &["png", "jpg", "jpeg", "webp"]
+                }
                 _ => &["docx", "pptx"],
             };
             ensure!(
@@ -340,7 +377,16 @@ impl Request {
                 "Unsupported input format"
             );
         }
-        if ["compose", "compose_v2", "render", "svg_compose", "image_prepare"].contains(&operation) {
+        if [
+            "compose",
+            "compose_v2",
+            "render",
+            "svg_compose",
+            "image_prepare",
+            "image_adjust",
+        ]
+        .contains(&operation)
+        {
             let output = self.output.as_deref().context("Output path is required")?;
             ensure!(
                 !output.is_empty()
@@ -356,7 +402,7 @@ impl Request {
                 !path.exists() && path.parent().is_some_and(Path::is_dir),
                 "Output must be new and its parent must exist"
             );
-            if operation == "image_prepare" {
+            if matches!(operation, "image_prepare" | "image_adjust") {
                 ensure!(
                     matches!(
                         path.extension()
@@ -587,7 +633,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         let destination = workspace.resolve(output, true)?;
         if matches!(
             plan.request.operation.as_str(),
-            "compose" | "compose_v2" | "svg_compose" | "image_prepare"
+            "compose" | "compose_v2" | "svg_compose" | "image_prepare" | "image_adjust"
         ) {
             let suffix = Path::new(output)
                 .extension()

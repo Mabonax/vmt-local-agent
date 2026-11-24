@@ -624,6 +624,68 @@ def image_prepare(args):
             'visual_review':'PENDING','limitation':'EXIF orientation applied; metadata stripped. No ICC colour conversion or aesthetic assessment.'}
 
 
+def image_adjust(args):
+    from PIL import Image, ImageOps, ImageEnhance, ImageDraw, ImageChops, ImageStat
+    im, info = open_reviewed_image()
+    mode = args['mode']
+    amount = args.get('amount',20 if mode == 'rounded' else 100)
+    if type(amount) is not int or not 0 <= amount <= 200:
+        raise ValueError('Invalid adjustment percentage')
+    if mode in ('grayscale','circle') and 'amount' in args:
+        raise ValueError('This mode takes no amount')
+    alpha = im.getchannel('A')
+    rgb = im.convert('RGB')
+    enhancers = {'brightness':ImageEnhance.Brightness,'contrast':ImageEnhance.Contrast,
+                 'saturation':ImageEnhance.Color,'sharpness':ImageEnhance.Sharpness}
+    if mode in enhancers:
+        rgb = enhancers[mode](rgb).enhance(amount/100)
+        result = rgb.convert('RGBA')
+        result.putalpha(alpha)
+    elif mode == 'grayscale':
+        result = ImageOps.grayscale(rgb).convert('RGBA')
+        result.putalpha(alpha)
+    elif mode in ('circle','rounded'):
+        if mode == 'circle':
+            edge = min(im.size)
+            im = ImageOps.fit(im,(edge,edge),centering=(.5,.5))
+        elif amount > 50:
+            raise ValueError('Radius percentage must be 0-50')
+        result = im.copy()
+        mask = Image.new('L',im.size,0)
+        draw = ImageDraw.Draw(mask)
+        bounds = (0,0,im.width-1,im.height-1)
+        if mode == 'circle':
+            draw.ellipse(bounds,fill=255)
+        else:
+            draw.rounded_rectangle(bounds,radius=round(min(im.size)*amount/100),fill=255)
+        result.putalpha(ImageChops.multiply(im.getchannel('A'),mask))
+    else:
+        raise ValueError('Unsupported image adjustment')
+    suffix = Path(args['output']).suffix.lower()
+    if suffix not in ('.png','.jpg','.jpeg','.webp'):
+        raise ValueError('Unsupported output format')
+    if mode in ('circle','rounded') and suffix in ('.jpg','.jpeg'):
+        raise ValueError('Masks require PNG or WebP output')
+    output = Path('artifact'+suffix)
+    result.info.clear()
+    if suffix in ('.jpg','.jpeg'):
+        flattened = Image.new('RGB',result.size,'white')
+        flattened.paste(result,mask=result.getchannel('A'))
+        flattened.save(output,format='JPEG',quality=90)
+    else:
+        result.save(output,format='PNG' if suffix=='.png' else 'WEBP',
+                    **({'lossless':True} if suffix=='.webp' else {}))
+    # Sample only visible pixels; this is a tonal statistic, not an aesthetic score.
+    gray = ImageOps.grayscale(result.convert('RGB'))
+    visible = result.getchannel('A').point(lambda a: 255 if a >= 128 else 0)
+    stats = ImageStat.Stat(gray,mask=visible)
+    metrics = {'mean_luminance_8bit':round(stats.mean[0],2),'luminance_stddev':round(stats.stddev[0],2)} if visible.getbbox() else None
+    return {'created':args['output'],'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),
+            'source':info,'mode':mode,'amount':None if mode in ('circle','grayscale') else amount,
+            'width':result.width,'height':result.height,'tonal_metrics':metrics,'visual_review':'PENDING',
+            'limitation':'Deterministic adjustments in decoded RGB; no ICC conversion, subject recognition or aesthetic assessment.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
@@ -632,6 +694,8 @@ def run(request):
         return info
     if operation == 'image_prepare':
         return image_prepare(args)
+    if operation == 'image_adjust':
+        return image_adjust(args)
     if operation == 'svg_compose':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         source = Path('artifact.svg')
