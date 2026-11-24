@@ -7,6 +7,10 @@ import unittest
 
 ROOT=pathlib.Path(__file__).resolve().parent
 EXAMPLES={
+ "project.detect":{"paths":["Cargo.toml"]},
+ "code.metrics":{"text":"hello"},
+ "code.dependencies":{"format":"npm","text":"{}"},
+ "python.imports":{"text":"import os"},
  "math.calculate":{"operation":"add","a":2,"b":3},
  "data.describe":{"values":[1,2,3]},
  "data.frequency":{"values":["a","a"]},
