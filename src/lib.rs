@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod design_tools;
 pub mod execution;
 pub mod knowledge;
 pub mod mcp;

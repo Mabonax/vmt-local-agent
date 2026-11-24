@@ -69,13 +69,14 @@ pub fn action_schema() -> Value {
     json!({"type":"object","properties":{
         "kind":{"type":"string","enum":["tool","final"]},
         "message":{"type":"string"},
-        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},
+        "tool":{"type":"string","enum":["","list_files","read_file","search_text","write_file","edit_file","run_command","web_fetch","web_search","list_skills","load_skill","skill_resource","design_tool","memory_search","remember_project","mcp_servers","mcp_tools","mcp_call","mcp_schema","index_knowledge","knowledge_search","list_workflows","workflow_status","workflow_start","workflow_advance","workflow_finish","research_sources","task_history"]},
         "args":{"type":"object","properties":{
             "path":{"type":"string"},"query":{"type":"string"},"content":{"type":"string"},
             "old":{"type":"string"},"new":{"type":"string"},"command":{"type":"string"},"url":{"type":"string"},
             "start_line":{"type":"integer"},"max_lines":{"type":"integer"},"id":{"type":"string"},
             "server":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object"},
-            "model":{"type":"string"},"kind":{"type":"string"},"evidence":{"type":"string"}
+            "model":{"type":"string"},"kind":{"type":"string"},"evidence":{"type":"string"},
+            "operation":{"type":"string"},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer"}
         },"additionalProperties":false}
     },"required":["kind","message","tool","args"],"additionalProperties":false})
 }
@@ -120,6 +121,12 @@ fn tool_definitions(settings: &Settings) -> Value {
         return json!([]);
     }
     let definitions = [
+        (
+            "design_tool",
+            "Run a reviewed local design adapter. Operations: palette(seed,mode,theme), contrast(foreground,background), extract(input,count), compose(input JSON,output DOCX/PPTX), render(input DOCX/PPTX,output new directory). Paths are project-relative; no overwrites. Load the matching colour-intelligence/professional-document-design skill first. Requires explicit review and local runtime setup. Rendering leaves visual review PENDING.",
+            json!({"operation":{"type":"string","enum":["palette","contrast","extract","compose","render"]},"seed":{"type":"string"},"mode":{"type":"string"},"theme":{"type":"string"},"foreground":{"type":"string"},"background":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":16}}),
+            vec!["operation"],
+        ),
         (
             "research_sources",
             "Show previously fetched public HTTPS source URLs and retrieval dates for this project. Does not contact the internet.",
@@ -278,7 +285,7 @@ fn tool_definitions(settings: &Settings) -> Value {
         ),
     ];
     Value::Array(definitions.into_iter().filter(|(name,..)| {
-        (!settings.read_only || !["write_file","edit_file","run_command","remember_project","mcp_tools","mcp_call","index_knowledge","workflow_start","workflow_advance","workflow_finish"].contains(name))
+        (!settings.read_only || !["write_file","edit_file","run_command","design_tool","remember_project","mcp_tools","mcp_call","index_knowledge","workflow_start","workflow_advance","workflow_finish"].contains(name))
             && (settings.web_enabled || !name.starts_with("web_"))
     }).map(|(name,description,properties,required)|json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required}}})).collect())
 }

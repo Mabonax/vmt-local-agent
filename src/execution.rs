@@ -10,6 +10,7 @@ use std::sync::{
 
 fn matches_tool(tool: &str, proposal: &Proposal) -> bool {
     match proposal {
+        Proposal::Design { .. } => tool == "design_tool",
         Proposal::File { .. } => matches!(tool, "edit_file" | "write_file"),
         Proposal::Command { .. } => tool == "run_command",
         Proposal::Web { tool: web_tool, .. } => {

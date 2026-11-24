@@ -96,6 +96,9 @@ pub struct Action {
 
 #[derive(Clone, Debug)]
 pub enum Proposal {
+    Design {
+        plan: Box<crate::design_tools::Plan>,
+    },
     File {
         path: String,
         before: Option<String>,

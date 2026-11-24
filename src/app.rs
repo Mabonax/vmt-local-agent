@@ -1128,19 +1128,79 @@ impl Desktop {
         );
         for row in self.skill_rows.clone() {
             ui.add_space(12.0);
-            egui::Frame::new().fill(PANEL).corner_radius(12).inner_margin(14).show(ui,|ui| {
-                ui.horizontal_wrapped(|ui| {ui.label(RichText::new(&row.id).strong());ui.label(RichText::new(&row.status).color(if row.status=="enabled"{ACCENT}else{AMBER}));ui.label(RichText::new(format!("v{}",row.version)).small());});
-                ui.label(&row.description);ui.label(RichText::new(format!("Licence: {} · Execution: guidance only / tools not certified by registration",row.license)).small().color(MUTED));
-                ui.label(RichText::new(&row.compatibility).small().color(MUTED));
-                ui.horizontal(|ui| {
-                    if ui.button("Inspect instructions").clicked(){match crate::portable_skills::preview(&row.root,&row.id){Ok(text)=>self.preview=Some((format!("Skill · {}",row.id),text)),Err(e)=>self.error=Some(e.to_string())}}
-                    if ui.add_enabled(!self.busy && row.status!="review required",egui::Button::new(if row.status=="enabled"{"Disable"}else{"Enable"})).clicked(){
-                        match crate::portable_skills::Registry::load().and_then(|mut r|r.set_enabled(&row.id,row.status!="enabled")){Ok(_)=>self.refresh_skills(),Err(e)=>self.error=Some(e.to_string())}
-                    }
-                    if ui.add_enabled(!self.busy,egui::Button::new("Review source version")).clicked(){self.skill_source_input=row.root.clone();match crate::portable_skills::inspect_library(std::path::Path::new(&row.root)){Ok(l)=>self.pending_skill_library=Some(l),Err(e)=>self.error=Some(e.to_string())}}
+            egui::Frame::new()
+                .fill(PANEL)
+                .corner_radius(12)
+                .inner_margin(14)
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new(&row.id).strong());
+                        ui.label(
+                            RichText::new(&row.status).color(if row.status == "enabled" {
+                                ACCENT
+                            } else {
+                                AMBER
+                            }),
+                        );
+                        ui.label(RichText::new(format!("v{}", row.version)).small());
+                    });
+                    ui.label(&row.description);
+                    ui.label(
+                        RichText::new(format!(
+                            "Licence: {} · {}",
+                            row.license,
+                            vmt_local_agent::design_tools::status(&row.id)
+                        ))
+                        .small()
+                        .color(MUTED),
+                    );
+                    ui.label(RichText::new(&row.compatibility).small().color(MUTED));
+                    ui.horizontal(|ui| {
+                        if ui.button("Inspect instructions").clicked() {
+                            match crate::portable_skills::preview(&row.root, &row.id) {
+                                Ok(text) => {
+                                    self.preview = Some((format!("Skill · {}", row.id), text))
+                                }
+                                Err(e) => self.error = Some(e.to_string()),
+                            }
+                        }
+                        if ui
+                            .add_enabled(
+                                !self.busy && row.status != "review required",
+                                egui::Button::new(if row.status == "enabled" {
+                                    "Disable"
+                                } else {
+                                    "Enable"
+                                }),
+                            )
+                            .clicked()
+                        {
+                            match crate::portable_skills::Registry::load()
+                                .and_then(|mut r| r.set_enabled(&row.id, row.status != "enabled"))
+                            {
+                                Ok(_) => self.refresh_skills(),
+                                Err(e) => self.error = Some(e.to_string()),
+                            }
+                        }
+                        if ui
+                            .add_enabled(!self.busy, egui::Button::new("Review source version"))
+                            .clicked()
+                        {
+                            self.skill_source_input = row.root.clone();
+                            match crate::portable_skills::inspect_library(std::path::Path::new(
+                                &row.root,
+                            )) {
+                                Ok(l) => self.pending_skill_library = Some(l),
+                                Err(e) => self.error = Some(e.to_string()),
+                            }
+                        }
+                    });
+                    ui.label(
+                        RichText::new(format!("Content SHA-256: {}", row.fingerprint))
+                            .small()
+                            .color(MUTED),
+                    );
                 });
-                ui.label(RichText::new(format!("Content SHA-256: {}",row.fingerprint)).small().color(MUTED));
-            });
         }
         ui.add_space(20.0);
         egui::CollapsingHeader::new("Built-in and legacy guidance catalogue").show(ui, |ui| {
@@ -1448,6 +1508,7 @@ impl Desktop {
                 match &approval.proposal {
                     Proposal::File {path,..}=>{ui.label(format!("Project file: {path}"));},
                     Proposal::Command {..}=>{ui.label("This command runs with your Windows account in the selected project. It is not an OS sandbox.");},
+                    Proposal::Design {..}=>{ui.label("This runs a reviewed design package with your Windows account. Inspect the exact operation, input hash and output location. Visual review remains separate.");},
                     Proposal::Web {..}=>{ui.label("This request connects to the internet. Review the destination and any query text before sending.");},
                     Proposal::MemoryNote {..}=>{ui.label("This note will be saved in local project memory. Do not approve confidential or incorrect information.");},
                     Proposal::Mcp {..}=>{ui.label("This starts an external MCP server executable with your Windows account. It is not sandboxed. Review server, operation, tool and arguments.");},

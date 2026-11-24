@@ -1,4 +1,4 @@
-# VMT Local Agent 0.6.0
+# VMT Local Agent 0.6.1
 
 A native Rust desktop coding workbench for the Ollama models installed on this
 computer. It provides chat, project inspection, reviewed edits, approved commands,
@@ -7,7 +7,7 @@ model quality or full feature parity.
 
 ## Open the app
 
-Start Ollama, then open `dist/VMT Local Agent 0.6.0.exe` or the **VMT Local Agent** desktop
+Start Ollama, then open `dist/VMT Local Agent 0.6.1.exe` or the **VMT Local Agent** desktop
 shortcut. No OpenAI account or API key is needed for local inference.
 
 1. Choose a model beside the composer. Start with **qwen3.5:4b** for Agent mode.
@@ -25,6 +25,19 @@ shortcut. No OpenAI account or API key is needed for local inference.
    asks for each mutation. Routine mode shares a bounded task grant for small
    edits and workflow progress. **Approve once** covers only the displayed action;
    **Deny** leaves it unexecuted. See the thresholds below.
+
+## Design skills (0.6.1)
+
+The reviewed Colour Intelligence and Professional Document Design packages now
+have a registered `design_tool` adapter: palette/contrast/image extraction,
+editable DOCX/PPTX composition and page/slide rendering. Every invocation requires
+individual approval, including in Routine mode. The original ZIP files remain
+unchanged and are not redistributed in this repository. See
+[setup, supported inputs and verification](docs/skills/design-skills.md).
+
+The composer provides baseline editable text, bullets and Word tables. Dense
+slides and unsupported layouts are rejected. Rendering creates PNG review files;
+the agent must report visual review as pending until the images are inspected.
 
 ## Task permissions and portable skills (0.6.0)
 

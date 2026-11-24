@@ -896,6 +896,173 @@ pub fn permission_skills_check(model: &str, source: &str) -> Result<()> {
     Ok(())
 }
 
+/// Real local model with only exact fixture design actions accepted by the harness.
+pub fn design_skills_check(model: &str, source: &str) -> Result<()> {
+    let runtime_file = store::data_dir().join("design-runtime.json");
+    let runtime = fs::read(runtime_file)?;
+    let root = std::env::current_dir()?
+        .join(".local")
+        .join(format!("design-live-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    fs::create_dir_all(&project)?;
+    store::configure_data_dir(root.join("profile"))?;
+    fs::write(store::data_dir().join("design-runtime.json"), runtime)?;
+    let library = crate::portable_skills::inspect_library(std::path::Path::new(source))?;
+    ensure!(
+        library.skills.len() == 2,
+        "Expected the two design packages"
+    );
+    crate::portable_skills::Registry::load()?.approve(library)?;
+    fs::write(
+        project.join("content.json"),
+        serde_json::to_vec(
+            &json!({"title":"Local skill acceptance","subtitle":"A synthetic fixture","sections":[{"heading":"Verified scope","paragraphs":["Create editable files using local tools."],"bullets":["Preserve source text","Render every page"]}]}),
+        )?,
+    )?;
+    // Small RGB PNG fixture, generated without needing an image crate.
+    let png = [
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2, 0, 0, 0, 2, 8, 2,
+        0, 0, 0, 253, 212, 154, 115, 0, 0, 0, 16, 73, 68, 65, 84, 120, 156, 99, 252, 207, 0, 2, 76,
+        96, 146, 1, 0, 13, 29, 1, 3, 130, 201, 113, 255, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96,
+        130,
+    ];
+    fs::write(project.join("colour.png"), png)?;
+    let settings = Settings {
+        model: model.into(),
+        max_steps: 32,
+        ..Default::default()
+    };
+    let request = r##"Acceptance in this disposable project. Use tools, then report honest results. First load_skill colour-intelligence and read its references/colour-theory.md with skill_resource. Use design_tool operation palette seed #087F83 mode analogous theme light; then contrast foreground #000000 background #FFFFFF; then extract input colour.png count 2. Load_skill professional-document-design and read its references/input-contract.md. Read content.json. Use design_tool compose input content.json output acceptance.docx, then render input acceptance.docx output review-docx. Then compose input content.json output acceptance.pptx, then render input acceptance.pptx output review-pptx. Do not use commands, internet, MCP, memory writes or alter source files. Each design tool needs separate fixture approval. Do not claim to have viewed PNGs: no image-viewing tool is supplied. State that visual review remains pending. Finish after these operations."##;
+    let (tx, rx) = mpsc::channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = cancel.clone();
+    let path = project.to_string_lossy().into_owned();
+    let started = Instant::now();
+    let worker = std::thread::spawn(move || {
+        agent::run(
+            settings,
+            path,
+            vec![ChatEntry {
+                role: "user".into(),
+                content: request.into(),
+                ..Default::default()
+            }],
+            tx,
+            stop,
+            eframe::egui::Context::default(),
+        )
+    });
+    let mut approved = 0;
+    let mut denied = 0;
+    let mut completed = 0;
+    let mut loaded = std::collections::BTreeSet::new();
+    let mut references = 0;
+    let mut errors = Vec::new();
+    let mut answer = String::new();
+    while let Ok(event) = rx.recv_timeout(Duration::from_secs(300)) {
+        match event {
+            Event::Approval(action) => {
+                let allowed = if let Proposal::Design { plan } = &action.proposal {
+                    let r = &plan.request;
+                    match r.operation.as_str() {
+                        "palette" => {
+                            r.seed.as_deref() == Some("#087F83")
+                                && r.mode.as_deref().unwrap_or("analogous") == "analogous"
+                                && r.theme.as_deref().unwrap_or("light") == "light"
+                        }
+                        "contrast" => {
+                            r.foreground.as_deref() == Some("#000000")
+                                && r.background.as_deref() == Some("#FFFFFF")
+                        }
+                        "extract" => {
+                            r.input.as_deref() == Some("colour.png") && r.count.unwrap_or(6) == 2
+                        }
+                        "compose" => {
+                            r.input.as_deref() == Some("content.json")
+                                && matches!(
+                                    r.output.as_deref(),
+                                    Some("acceptance.docx" | "acceptance.pptx")
+                                )
+                        }
+                        "render" => matches!(
+                            (r.input.as_deref(), r.output.as_deref()),
+                            (Some("acceptance.docx"), Some("review-docx"))
+                                | (Some("acceptance.pptx"), Some("review-pptx"))
+                        ),
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+                if allowed {
+                    approved += 1;
+                } else {
+                    denied += 1;
+                }
+                action
+                    .reply
+                    .send(crate::types::ApprovalDecision::from(allowed))?;
+            }
+            Event::Activity(action) => {
+                if action.state == "Complete" {
+                    if action.title == "load_skill" {
+                        for id in ["colour-intelligence", "professional-document-design"] {
+                            if action.detail.contains(id) {
+                                loaded.insert(id.to_string());
+                            }
+                        }
+                    }
+                    if action.title == "skill_resource" {
+                        references += 1;
+                    }
+                    if action.title == "design_tool" {
+                        completed += 1;
+                    }
+                }
+                println!("{}: {}", action.title, action.state);
+            }
+            Event::Final(text) => answer = text,
+            Event::Error(error) => errors.push(error),
+            Event::Finished => break,
+            _ => {}
+        }
+    }
+    cancel.store(true, Ordering::Relaxed);
+    worker
+        .join()
+        .map_err(|_| anyhow::anyhow!("Design acceptance worker panicked"))?;
+    let mut artifacts = true;
+    for (suffix, pages) in [("docx", 1), ("pptx", 2)] {
+        artifacts &= project.join(format!("acceptance.{suffix}")).is_file();
+        let review = project.join(format!("review-{suffix}/review.json"));
+        artifacts &= fs::read(review)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .is_some_and(|value| value["pages"] == pages && value["visual_review"] == "PENDING");
+    }
+    let honest_review =
+        answer.to_ascii_lowercase().contains("pending") && !answer.starts_with("Paused:");
+    let passed = errors.is_empty()
+        && denied == 0
+        && approved == 7
+        && completed == 7
+        && loaded.len() == 2
+        && references >= 2
+        && artifacts
+        && honest_review;
+    let report = json!({"passed":passed,"model":model,"skills_loaded":loaded,"resources_loaded":references,"design_actions_completed":completed,"explicit_action_reviews":approved,"unrelated_reviews_denied":denied,"artifacts_verified":artifacts,"visual_review_handoff":honest_review,"visual_review":"PENDING","errors":errors,"elapsed_seconds":started.elapsed().as_secs_f64()});
+    fs::write(
+        root.join("live-report.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("{report}\nReport directory: {}", root.display());
+    ensure!(
+        passed,
+        "Live design acceptance incomplete; inspect report and artifacts"
+    );
+    Ok(())
+}
+
 pub fn model_check(
     model: &str,
     mode: &str,

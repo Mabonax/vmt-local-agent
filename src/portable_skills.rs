@@ -323,7 +323,7 @@ impl Registry {
             })
             .collect()
     }
-    fn approved(&self, id: &str) -> Result<(PathBuf, ReviewedSkill)> {
+    pub(crate) fn approved(&self, id: &str) -> Result<(PathBuf, ReviewedSkill)> {
         ensure!(valid_name(id), "Invalid skill ID");
         let (library, skill) = self
             .libraries
@@ -343,6 +343,17 @@ impl Registry {
             "Skill changed since review; approve the new version in Skills settings"
         );
         Ok((root, current))
+    }
+    /// Exact reviewed bytes for a separately approved, registered design adapter.
+    /// Discovery and resource reads never call this execution boundary.
+    pub(crate) fn adapter_script(&self, id: &str, path: &str) -> Result<(String, String)> {
+        let (root, skill) = self.approved(id)?;
+        let data = read_bounded(&Workspace::new(root)?.resolve(path, false)?, MAX_RESOURCE)?;
+        ensure!(
+            skill.files.get(path) == Some(&format!("{:x}", Sha256::digest(&data))),
+            "Skill changed during adapter preparation"
+        );
+        Ok((String::from_utf8(data)?, skill.fingerprint))
     }
     pub fn load_skill(&self, id: &str) -> Result<String> {
         let (root, skill) = self.approved(id)?;

@@ -46,6 +46,9 @@ impl Tools {
         policy::authorize(name, read_only, web)?;
         let path = args["path"].as_str().unwrap_or(".");
         match name {
+            "design_tool" => Ok(Prepared::Review(Proposal::Design {
+                plan: Box::new(crate::design_tools::prepare(&self.workspace, args)?),
+            })),
             "research_sources" => Ok(Prepared::Output(research::list_sources(&self.workspace)?)),
             "task_history" => Ok(Prepared::Output(task_journal::recent_for(
                 &self.workspace,
@@ -290,6 +293,9 @@ impl Tools {
             "Stopped before executing the approved action"
         );
         match proposal {
+            Proposal::Design { plan } => {
+                crate::design_tools::execute(&self.workspace, plan, cancel)
+            }
             Proposal::File {
                 path,
                 before,
@@ -334,6 +340,7 @@ impl Tools {
 
 pub fn diff(proposal: &Proposal) -> String {
     match proposal {
+        Proposal::Design { plan } => plan.describe(),
         Proposal::File {
             path,
             before,

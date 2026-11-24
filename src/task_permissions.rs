@@ -55,6 +55,8 @@ fn routine_edit(path: &str, before: Option<&str>, after: &str) -> Option<usize> 
                     | "tools.rs"
                     | "store.rs"
                     | "skill-libraries.json"
+                    | "design-runtime.json"
+                    | "design_tools.rs"
                     | "projects.json"
                     | "security"
                     | "auth"

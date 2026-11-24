@@ -1,4 +1,12 @@
 fn main() -> anyhow::Result<()> {
+    let raw: Vec<String> = std::env::args().collect();
+    if let Some(index) = raw.iter().position(|value| value == "--data-dir") {
+        vmt_local_agent::store::configure_data_dir(
+            raw.get(index + 1)
+                .ok_or_else(|| anyhow::anyhow!("Missing profile directory"))?
+                .into(),
+        )?;
+    }
     let model = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "deepseek-r1-local:7b".into());
@@ -6,6 +14,52 @@ fn main() -> anyhow::Result<()> {
         .nth(2)
         .unwrap_or_else(|| "qwen3.5:4b".into());
     match model.as_str() {
+        "--design-live" => {
+            let source = std::env::args()
+                .nth(3)
+                .ok_or_else(|| anyhow::anyhow!("Provide model and design skills root"))?;
+            return vmt_local_agent::verification::design_skills_check(&selected, &source);
+        }
+        "--design-configure" => {
+            let soffice = std::env::args().nth(3).ok_or_else(|| {
+                anyhow::anyhow!("Provide Python and LibreOffice executable paths")
+            })?;
+            vmt_local_agent::design_tools::configure(&selected, &soffice)?;
+            println!("Design runtime configured. Individual tool actions still require review.");
+            return Ok(());
+        }
+        "--design-operation" => {
+            let workspace = std::env::args()
+                .nth(3)
+                .ok_or_else(|| anyhow::anyhow!("Provide request JSON and workspace"))?;
+            let args: serde_json::Value = serde_json::from_str(&selected)?;
+            let mut tools = vmt_local_agent::tools::Tools {
+                workspace: vmt_local_agent::workspace::Workspace::new(workspace)?,
+                observed: Default::default(),
+            };
+            let vmt_local_agent::tools::Prepared::Review(proposal) =
+                tools.prepare("design_tool", &args, false, false)?
+            else {
+                anyhow::bail!("Expected reviewed design proposal")
+            };
+            let mut journal = vmt_local_agent::task_journal::TaskJournal::start(&tools.workspace)?;
+            let result = vmt_local_agent::execution::execute_reviewed(
+                &mut tools,
+                "design_tool",
+                &proposal,
+                false,
+                false,
+                &mut journal,
+                &std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            );
+            journal.finish(if result.is_ok() {
+                "completed"
+            } else {
+                "failed"
+            })?;
+            println!("{}", result?);
+            return Ok(());
+        }
         "--skills-import" => {
             let library =
                 vmt_local_agent::portable_skills::inspect_library(std::path::Path::new(&selected))?;

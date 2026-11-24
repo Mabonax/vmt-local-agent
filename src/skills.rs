@@ -138,7 +138,11 @@ pub fn load(id: &str) -> Result<String> {
         .iter()
         .any(|l| l.skills.iter().any(|s| s.metadata.name == id))
     {
-        return registry.load_skill(id);
+        return Ok(format!(
+            "{}{}",
+            registry.load_skill(id)?,
+            crate::design_tools::integration_note(id)
+        ));
     }
     load_user_skill(&skill_dir(), id)
 }
