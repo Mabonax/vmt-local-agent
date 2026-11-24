@@ -6,7 +6,10 @@ import sys
 import unittest
 
 ROOT=pathlib.Path(__file__).resolve().parent
+from dispatch import dispatch
+
 EXAMPLES={
+ "pdf.generate":{"title":"Report","body":"Example"},
  "office.docx":{"title":"Report","sections":[]},
  "office.xlsx":{"headers":["Name"],"rows":[["Example"]]},
  "office.pptx":{"title":"Deck","slides":[]},
@@ -30,6 +33,8 @@ EXAMPLES={
 }
 class Acceptance(unittest.TestCase):
     def test_all(self):
+        fixture=dispatch("pdf.generate",{"title":"Fixture","body":"Example"})["result"]["content"]
+        EXAMPLES.update({"pdf.inspect":{"content":fixture},"pdf.extract_text":{"content":fixture,"pages":[1]},"pdf.split":{"content":fixture,"pages":[1]},"pdf.merge":{"documents":[fixture,fixture]}})
         seen=set()
         for folder in sorted(ROOT.iterdir()):
             if not folder.is_dir() or not (folder/"manifest.json").is_file(): continue
