@@ -36,3 +36,6 @@ workspace_adapter.py exposes metadata, SHA-256 and bounded directory listing thr
 
 ## Repository intelligence
 Four pure static tools: project.detect, code.metrics, code.dependencies, python.imports. Dependency extraction is limited to top-level npm, Composer and Cargo declarations; no lockfile resolution, vulnerability assessment or execution. Requires Python 3.11+ (tomllib). Git operations remain outside the pure dispatcher and must use the existing reviewed command broker.
+
+## Office production V1
+Install dependencies explicitly using `python -m pip install -r tool-packs/office/requirements.txt`. Three registered tools generate editable DOCX, XLSX and PPTX in memory and return base64 bytes (maximum 700000 raw bytes). The host must decode and save via its approved workspace artifact writer, not place base64 in model context. Spreadsheet cells are literal only; formula-like strings remain text. The scalar schema type is a VMT dispatcher extension, not standard JSON Schema. Layouts are basic fixed templates; reopen tests check structure, not visual quality. Rendering, pagination checks, formula support and template editing are future work. No automatic dependency installation at runtime.
