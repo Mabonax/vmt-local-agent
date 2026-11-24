@@ -9,6 +9,9 @@ ROOT=pathlib.Path(__file__).resolve().parent
 from dispatch import dispatch
 
 EXAMPLES={
+ "artifact.hash":{"content":"aGVsbG8="},
+ "layout.bounds":{"width":100,"height":100,"elements":[]},
+ "layout.overlap":{"width":100,"height":100,"elements":[]},
  "pdf.generate":{"title":"Report","body":"Example"},
  "office.docx":{"title":"Report","sections":[]},
  "office.xlsx":{"headers":["Name"],"rows":[["Example"]]},
@@ -35,6 +38,7 @@ class Acceptance(unittest.TestCase):
     def test_all(self):
         fixture=dispatch("pdf.generate",{"title":"Fixture","body":"Example"})["result"]["content"]
         EXAMPLES.update({"pdf.inspect":{"content":fixture},"pdf.extract_text":{"content":fixture,"pages":[1]},"pdf.split":{"content":fixture,"pages":[1]},"pdf.merge":{"documents":[fixture,fixture]}})
+        EXAMPLES["artifact.inspect"]={"content":fixture}
         seen=set()
         for folder in sorted(ROOT.iterdir()):
             if not folder.is_dir() or not (folder/"manifest.json").is_file(): continue
