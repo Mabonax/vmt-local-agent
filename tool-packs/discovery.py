@@ -5,6 +5,7 @@ import json
 import re
 from dispatch import registry
 from artifact_host import SINGLE
+from system_adapter import SCHEMAS
 
 DEPENDENCIES={
  "office.docx":("docx",), "office.xlsx":("openpyxl",), "office.pptx":("pptx",),
@@ -63,6 +64,8 @@ def catalog():
         tools[name]={"definition":spec,"category":folder.name,"dependencies":DEPENDENCIES.get(name,())}
     for name,props in (("artifact.list",{}),("artifact.metadata",{"artifact_id":copy.deepcopy(ID)})):
         tools[name]={"definition":{"name":name,"description":ALIASES[name],"input_schema":obj(props)},"category":"artifacts","dependencies":()}
+    for name,schema in SCHEMAS.items():
+        tools[name]={"definition":{"name":name,"description":name.replace("."," ")+" read-only diagnostics or model memory estimate","input_schema":copy.deepcopy(schema)},"category":"system","dependencies":()}
     return tools
 
 def tokens(value):
