@@ -3,7 +3,6 @@ import base64
 import io
 import json
 import sys
-import textwrap
 
 MAX_RAW=500000
 
@@ -31,6 +30,7 @@ def execute(name,args):
     if name=="pdf.generate":
         from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import A4
+        from reportlab.pdfbase.pdfmetrics import stringWidth
         title,body=args["title"],args["body"]
         if type(title) is not str or not 1<=len(title)<=100 or type(body) is not str or len(body)>30000: raise ValueError()
         # Built-in font support is deliberately limited to Latin-1 text.
@@ -40,15 +40,29 @@ def execute(name,args):
         if "\n" in title or "\r" in title or "\t" in title: raise ValueError()
         out=io.BytesIO(); c=canvas.Canvas(out,pagesize=A4)
         w,h=A4; page=1
+        def wrap(text,font,size):
+            # Width-aware wrapping, including long unbroken words.
+            lines=[]; line=""
+            for word in text.split():
+                candidate=(line+" "+word).strip()
+                if stringWidth(candidate,font,size)<=w-96:
+                    line=candidate; continue
+                if line: lines.append(line); line=""
+                for ch in word:
+                    if stringWidth(line+ch,font,size)>w-96:
+                        lines.append(line); line=""
+                    line+=ch
+            if line: lines.append(line)
+            return lines or [""]
         def header():
             c.setFont("Helvetica-Bold",16); c.setFillColorRGB(.09,.21,.36)
-            for i,line in enumerate(textwrap.wrap(title,55)): c.drawString(48,h-48-20*i,line)
+            for i,line in enumerate(wrap(title,"Helvetica-Bold",16)): c.drawString(48,h-48-20*i,line)
             c.setFont("Helvetica",10); c.setFillColorRGB(.14,.18,.23)
         def footer():
             c.setFont("Helvetica",9); c.drawRightString(w-48,32,str(page))
         header(); y=h-110
         for paragraph in body.splitlines():
-            for line in textwrap.wrap(paragraph.expandtabs(4),88) or [""]:
+            for line in wrap(paragraph.expandtabs(4),"Helvetica",10):
                 if y<60:
                     footer(); c.showPage(); page+=1
                     if page>50: raise ValueError()
