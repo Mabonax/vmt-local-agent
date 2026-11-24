@@ -52,6 +52,21 @@ The normal profile is not used for live fixture execution. A successful guided
 case proves this path, not autonomous selection quality across all 18 skills or
 parity with Codex. The live report is retained in ignored `.local/verification-06`.
 
+## Native desktop inspection
+
+The packaged Windows 0.6.0 executable was opened with an isolated profile.
+Actual screenshots and the accessibility tree confirmed the charcoal chat shell,
+Routine task composer control and 48-step/15-minute budget. General settings
+displayed the edit, byte, workflow and command-grant limits. The Skills page
+displayed 18 registered packages with enabled status, versions, licence status,
+content hashes and inspection controls. No permission setting or approval was
+changed through UI automation. This is a single-window inspection, not full
+display-scaling or accessibility certification.
+
+The normal profile's 18 registered fingerprints were independently compared with
+the committed inventory. The desktop shortcut targets the packaged 0.6.0 build;
+the prior shortcut was backed up locally. Existing preview processes were retained.
+
 ## Limits
 
 The provided broad general-purpose-platform brief is not represented as complete.
