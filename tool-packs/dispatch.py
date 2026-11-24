@@ -10,6 +10,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from execution import run_bounded
 
 ROOT=pathlib.Path(__file__).resolve().parent
 TRUSTED=("foundation","analysis","documents","repository","office","pdf","quality","visual")
@@ -52,14 +53,12 @@ def registry():
             result[tool["name"]]=(folder,m,tool)
     return result
 
-def dispatch(name,args):
+def dispatch(name,args,cancel=None):
     folder,m,tool=registry()[name]
     validate(args,tool["input_schema"])
     request=json.dumps({"tool":name,"args":args},allow_nan=False).encode()
     if len(request)>m["max_input_bytes"]: raise ValueError("Request too large")
-    # Trusted pure runners have bounded inputs; communicate buffers their output.
-    # This is a post-execution output check, not a hard process memory limit.
-    p=subprocess.run([sys.executable,"-I","-B",str(folder/"runner.py")],input=request,capture_output=True,timeout=m["timeout_seconds"],cwd=folder,env={})
+    p=run_bounded([sys.executable,"-I","-B",str(folder/"runner.py")],request,folder,m["timeout_seconds"],m["max_output_bytes"],cancel)
     if len(p.stdout)>m["max_output_bytes"] or len(p.stderr)>LIMIT: raise ValueError("Output too large")
     response=json.loads(p.stdout)
     if not isinstance(response,dict) or type(response.get("ok")) is not bool or p.returncode!= (0 if response["ok"] else 1): raise ValueError("Invalid response")
