@@ -13,3 +13,6 @@ Example:
 ```
 
 Coordinates and sizes are points. Rectangles support radius; ellipses use their bounding box. Text uses approved local Arial or Liberation Sans, size 8–72, normal or bold, single line. Object order determines stacking. Overlaps are reported, including intentional layers. No arbitrary XML, scripts, hyperlinks, images, external references or user-supplied font paths. Review the rendered appearance in an SVG viewer; geometric checks are not aesthetic certification.
+
+## V2 scene extensions
+Polygons use `kind: polygon` and `points` containing 3–64 pairs of normalized coordinates (0–1) relative to their declared box. Shape or text fill accepts a HEX string or a gradient object: `{"kind":"linear","direction":"diagonal","stops":[{"offset":0,"colour":"#123456"},{"offset":1,"colour":"#FFFFFF"}]}`. Linear directions: horizontal, vertical, diagonal. Radial gradients omit direction. Stops must be ordered, 2–8, offsets 0–1. Text can contain newline characters and wraps on whitespace within the declared box; optional line_height 1–2. At most 24 lines and 1600 characters; oversized words and excess height are rejected. Native text spans remain editable. This supersedes the single-line restriction. External URLs and raw markup remain unsupported.

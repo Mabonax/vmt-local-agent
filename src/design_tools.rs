@@ -146,7 +146,9 @@ impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
         if self.operation == "svg_compose" {
             ("vector-graphics", "SKILL.md")
-        } else if ["layout_grid", "layout_check", "layout_arrange"].contains(&self.operation.as_str()) {
+        } else if ["layout_grid", "layout_check", "layout_arrange"]
+            .contains(&self.operation.as_str())
+        {
             ("layout-intelligence", "SKILL.md")
         } else if ["type_scale", "measure_text"].contains(&self.operation.as_str()) {
             ("typography-intelligence", "SKILL.md")
@@ -334,7 +336,9 @@ impl Request {
             );
             if operation == "svg_compose" {
                 ensure!(
-                    path.extension().and_then(|v| v.to_str()).is_some_and(|v| v.eq_ignore_ascii_case("svg")),
+                    path.extension()
+                        .and_then(|v| v.to_str())
+                        .is_some_and(|v| v.eq_ignore_ascii_case("svg")),
                     "Output must be SVG"
                 );
             }
@@ -361,7 +365,12 @@ impl Request {
                     &workspace.resolve(input, false)?,
                     if matches!(
                         self.operation.as_str(),
-                        "compose" | "compose_v2" | "layout_grid" | "layout_check" | "layout_arrange" | "svg_compose"
+                        "compose"
+                            | "compose_v2"
+                            | "layout_grid"
+                            | "layout_check"
+                            | "layout_arrange"
+                            | "svg_compose"
                     ) {
                         64 * 1024
                     } else {

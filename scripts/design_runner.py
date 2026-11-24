@@ -431,9 +431,39 @@ def svg_compose(data, output):
     ns = 'http://www.w3.org/2000/svg'
     ET.register_namespace('',ns)
     root = ET.Element(f'{{{ns}}}svg', {'width':f'{w}pt','height':f'{h}pt','viewBox':f'0 0 {w} {h}'})
-    def add(tag, attrs, value=None):
-        node = ET.SubElement(root,f'{{{ns}}}{tag}',{k:str(v) for k,v in attrs.items()})
+    defs = ET.SubElement(root,f'{{{ns}}}defs')
+    def add(tag, attrs, value=None, parent=None):
+        node = ET.SubElement(root if parent is None else parent,f'{{{ns}}}{tag}',{k:str(v) for k,v in attrs.items()})
         node.text = value
+        return node
+    def fill(value, name):
+        if isinstance(value,str):
+            return colour(value)
+        if not isinstance(value,dict) or set(value)-{'kind','direction','stops'}:
+            raise ValueError('Invalid gradient')
+        kind = value.get('kind')
+        direction = value.get('direction','horizontal')
+        gid = 'gradient-'+name
+        if kind == 'linear' and direction in ('horizontal','vertical','diagonal'):
+            x,y = {'horizontal':('100%','0%'),'vertical':('0%','100%'),'diagonal':('100%','100%')}[direction]
+            node = add('linearGradient',{'id':gid,'x1':'0%','y1':'0%','x2':x,'y2':y},parent=defs)
+        elif kind == 'radial' and 'direction' not in value:
+            node = add('radialGradient',{'id':gid,'cx':'50%','cy':'50%','r':'50%'},parent=defs)
+        else:
+            raise ValueError('Unsupported gradient')
+        stops = value['stops']
+        if not isinstance(stops,list) or not 2 <= len(stops) <= 8:
+            raise ValueError('Gradient requires 2-8 stops')
+        previous = -1
+        for stop in stops:
+            if not isinstance(stop,dict) or set(stop) != {'offset','colour'}:
+                raise ValueError('Invalid gradient stop')
+            offset = bounded_number(stop['offset'],0,1)
+            if offset < previous:
+                raise ValueError('Gradient stops must be ordered')
+            previous = offset
+            add('stop',{'offset':offset,'stop-color':colour(stop['colour'])},parent=node)
+        return f'url(#{gid})'
     add('rect',{'width':w,'height':h,'fill':colour(data.get('background','#FFFFFF'))})
     geometry = []
     for e in elements:
@@ -441,24 +471,35 @@ def svg_compose(data, output):
             raise ValueError('Invalid object')
         kind = e.get('kind')
         base = {'id','kind','x','y','w','h','fill'}
-        extra = {'rect':{'radius'},'ellipse':set(),'text':{'text','size','font','weight'}}.get(kind)
+        extra = {'rect':{'radius'},'ellipse':set(),'polygon':{'points'},
+                 'text':{'text','size','font','weight','line_height'}}.get(kind)
         if extra is None or set(e)-base-extra:
             raise ValueError('Unsupported object or property')
         g = {k:e[k] for k in ('id','x','y','w','h')}
         geometry.append(g)
-        # Validate each box before using it in SVG arithmetic.
         if layout_check({'width':w,'height':h,'elements':[g]})['status'] != 'PASS':
             raise ValueError('Object outside canvas')
         x,y,ew,eh = (g[k] for k in ('x','y','w','h'))
-        attrs = {'id':'object-'+g['id'],'fill':colour(e['fill'])}
+        attrs = {'id':'object-'+g['id'],'fill':fill(e['fill'],g['id'])}
         if kind == 'rect':
             add('rect',{**attrs,'x':x,'y':y,'width':ew,'height':eh,'rx':bounded_number(e.get('radius',0),0,min(ew,eh)/2)})
         elif kind == 'ellipse':
             add('ellipse',{**attrs,'cx':x+ew/2,'cy':y+eh/2,'rx':ew/2,'ry':eh/2})
+        elif kind == 'polygon':
+            points = e['points']
+            if not isinstance(points,list) or not 3 <= len(points) <= 64:
+                raise ValueError('Polygon requires 3-64 points')
+            pairs = []
+            for point in points:
+                if not isinstance(point,list) or len(point)!=2:
+                    raise ValueError('Invalid polygon point')
+                px,py = bounded_number(point[0],0,1),bounded_number(point[1],0,1)
+                pairs.append(f'{x+ew*px},{y+eh*py}')
+            add('polygon',{**attrs,'points':' '.join(pairs)})
         else:
-            value = text(e['text'],400)
-            if not value.strip() or any(c in value for c in '\n\r\t'):
-                raise ValueError('Text must be a single nonempty line')
+            value = text(e['text'],1600)
+            if not value.strip() or '\t' in value or '\r' in value:
+                raise ValueError('Invalid text')
             size = bounded_number(e.get('size',12),8,72)
             font = e.get('font','Arial' if os.name=='nt' else 'Liberation Sans')
             weight = e.get('weight','normal')
@@ -467,13 +508,31 @@ def svg_compose(data, output):
             from PIL import ImageFont
             face = ImageFont.truetype(reviewed_font(font),round(size*4))
             ascent,descent = face.getmetrics()
-            # Reserve extra space for bold and renderer variance; actual rendering still needed.
             factor = 1.15 if weight == 'bold' else 1.05
-            if face.getlength(value)/4*factor > ew or (ascent+descent)/4 > eh:
+            def fits(line):
+                return face.getlength(line)/4*factor <= ew
+            lines = []
+            for paragraph in value.split('\n'):
+                current = ''
+                for word in paragraph.split():
+                    if not fits(word):
+                        raise ValueError('Unbreakable word exceeds box')
+                    candidate = (current+' '+word).strip()
+                    if fits(candidate):
+                        current = candidate
+                    else:
+                        lines.append(current)
+                        current = word
+                lines.append(current)
+            spacing = max((ascent+descent)/4,size*bounded_number(e.get('line_height',1.25),1,2))
+            if len(lines)>24 or (ascent+descent)/4+(len(lines)-1)*spacing>eh:
                 raise ValueError('Text exceeds declared box')
-            add('text',{**attrs,'x':x,'y':y+ascent/4,'font-family':font,'font-size':size,'font-weight':weight},value)
+            node = add('text',{**attrs,'x':x,'y':y+ascent/4,'font-family':font,'font-size':size,'font-weight':weight})
+            for i,line in enumerate(lines):
+                add('tspan',{'x':x,'y':y+ascent/4+i*spacing},line,parent=node)
     review = layout_check({'width':w,'height':h,'elements':geometry})
-    # Layering is allowed but never concealed from the caller.
+    if not len(defs):
+        root.remove(defs)
     ET.ElementTree(root).write(output,encoding='utf-8',xml_declaration=True)
     return review
 

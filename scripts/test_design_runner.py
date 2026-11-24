@@ -190,6 +190,38 @@ class DesignRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.svg_compose(data,Path('bad.svg'))
 
+    def test_svg_polygon_gradient_and_rejected_urls(self):
+        import xml.etree.ElementTree as ET
+        scene = {'width':600,'height':300,'elements':[{'id':'p','kind':'polygon','x':20,'y':20,'w':200,'h':100,
+                 'points':[[0,0],[1,0],[0.5,1]],'fill':{'kind':'linear','direction':'diagonal','stops':[
+                 {'offset':0,'colour':'#123456'},{'offset':1,'colour':'#FFFFFF'}]}}]}
+        result = runner.svg_compose(scene,Path('gradient.svg'))
+        self.assertEqual(result['status'],'PASS')
+        root = ET.parse('gradient.svg').getroot()
+        ns = {'s':'http://www.w3.org/2000/svg'}
+        self.assertEqual(len(root.findall('.//s:stop',ns)),2)
+        self.assertEqual(root.find('s:polygon',ns).get('fill'),'url(#gradient-p)')
+        scene['elements'][0]['fill'] = 'url(https://example.invalid)'
+        with self.assertRaises(ValueError):
+            runner.svg_compose(scene,Path('bad.svg'))
+
+    def test_svg_multiline_text(self):
+        import xml.etree.ElementTree as ET
+        from unittest.mock import patch
+        from PIL import ImageFont
+        face = ImageFont.load_default(size=48)
+        scene = {'width':300,'height':300,'elements':[{'id':'t','kind':'text','x':10,'y':10,'w':90,'h':180,
+                 'text':'First line of text\nSecond line','size':12,'fill':'#123456'}]}
+        with patch.object(runner,'reviewed_font',return_value='unused'), patch.object(ImageFont,'truetype',return_value=face):
+            runner.svg_compose(scene,Path('text.svg'))
+            root = ET.parse('text.svg').getroot()
+            lines = root.findall('.//{http://www.w3.org/2000/svg}tspan')
+            self.assertGreaterEqual(len(lines),2)
+            self.assertEqual(' '.join(n.text or '' for n in lines),'First line of text Second line')
+            scene['elements'][0]['h'] = 1
+            with self.assertRaises(ValueError):
+                runner.svg_compose(scene,Path('overflow.svg'))
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

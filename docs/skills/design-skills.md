@@ -168,3 +168,7 @@ Import `skills/layout-intelligence` through the reviewed skills registry (select
 ## Composition and vector graphics V1
 
 Import the repository `skills` library and review updated layout and new vector-graphics fingerprints. `layout_arrange` aligns edges/centres or distributes equal gaps; it returns geometry and a fresh review without modifying the source. `svg_compose` publishes a new editable SVG using a fixed XML serializer, allowlisted shapes and single-line measured text, with reported rectangular collisions. No raw markup, links, external assets or arbitrary fonts. Intentional layers may produce REVIEW_REQUIRED; visual review remains pending. PNG/PDF export and native Office layout integration are not included. CI tests cover arrangement and shape serialization; live-model acceptance remains separate.
+
+## Vector graphics V2 scene primitives
+
+`svg_compose` now accepts normalized polygons, internal linear/radial gradient definitions and editable multiline text with measured whitespace wrapping. It rejects overflow and unbreakable words. No new executable or dependency is required. Raw SVG markup, external URLs, arbitrary font paths and images remain unsupported. The previous single-line restriction is superseded. Geometry review is not a visual review; native rendering and PNG/PDF export remain future work.
