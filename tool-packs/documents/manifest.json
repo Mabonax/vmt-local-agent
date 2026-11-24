@@ -1,0 +1,93 @@
+{
+  "version": "1.0.0",
+  "runtime": "python3",
+  "entrypoint": "runner.py",
+  "protocol": "stdin-json-v1",
+  "permissions": [],
+  "network": false,
+  "timeout_seconds": 5,
+  "max_input_bytes": 1048576,
+  "max_output_bytes": 1048576,
+  "tools": [
+    {
+      "name": "document.outline",
+      "description": "Extract Markdown headings and flag skipped levels",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "design.contrast",
+      "description": "Calculate WCAG contrast thresholds",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "foreground": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "background": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        },
+        "required": [
+          "foreground",
+          "background"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "document.html",
+      "description": "Generate escaped standalone HTML from structured sections",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "sections": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "properties": {
+                "heading": {
+                  "type": "string",
+                  "maxLength": 5000
+                },
+                "body": {
+                  "type": "string",
+                  "maxLength": 5000
+                }
+              },
+              "required": [
+                "heading",
+                "body"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "title",
+          "sections"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

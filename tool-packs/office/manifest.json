@@ -1,0 +1,127 @@
+{
+  "version": "1.0.0",
+  "runtime": "python3",
+  "entrypoint": "runner.py",
+  "protocol": "stdin-json-v1",
+  "permissions": [],
+  "network": false,
+  "timeout_seconds": 10,
+  "max_input_bytes": 1048576,
+  "max_output_bytes": 1048576,
+  "tools": [
+    {
+      "name": "office.docx",
+      "description": "Generate editable Word document",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "sections": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "object",
+              "properties": {
+                "heading": {
+                  "type": "string",
+                  "maxLength": 150
+                },
+                "body": {
+                  "type": "string",
+                  "maxLength": 4000
+                }
+              },
+              "required": [
+                "heading",
+                "body"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "title",
+          "sections"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "office.xlsx",
+      "description": "Generate editable workbook with literal cells",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "headers": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 30,
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "rows": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "scalar"
+              }
+            }
+          }
+        },
+        "required": [
+          "headers",
+          "rows"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "office.pptx",
+      "description": "Generate editable widescreen presentation",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "slides": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "properties": {
+                "heading": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "body": {
+                  "type": "string",
+                  "maxLength": 400
+                }
+              },
+              "required": [
+                "heading",
+                "body"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "title",
+          "slides"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
