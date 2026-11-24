@@ -37,6 +37,10 @@ pub struct Request {
     pub input: Option<String>,
     pub output: Option<String>,
     pub count: Option<u8>,
+    pub font: Option<String>,
+    pub sample: Option<String>,
+    pub size: Option<u8>,
+    pub width: Option<u16>,
 }
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -97,6 +101,7 @@ pub fn status(id: &str) -> &'static str {
         "colour-intelligence-v2",
         "professional-document-design",
         "professional-document-design-v2",
+        "typography-intelligence",
     ]
     .contains(&id)
     {
@@ -110,7 +115,9 @@ pub fn status(id: &str) -> &'static str {
     }
 }
 pub fn integration_note(id: &str) -> &'static str {
-    if id == "colour-intelligence-v2" {
+    if id == "typography-intelligence" {
+        "\nUse design_tool type_scale or measure_text. Measurements use the approved local font and are estimates of Office layout, not visual certification."
+    } else if id == "colour-intelligence-v2" {
         "\nUse design_tool operations repair, gradient, categorical, simulate, system and distance. Do not execute skill scripts via shell. Each operation requires review. V1 palette/contrast/extract remain separate. Repair targets 4.5:1; simulation and distance do not certify accessibility."
     } else if id == "professional-document-design-v2" {
         "\nUse design_tool compose_v2 with reviewed JSON and a new DOCX/PPTX path. Use render separately for structural checks and PNG review. Do not run scripts via shell. Visual review remains pending."
@@ -131,7 +138,9 @@ const ADVANCED_COLOUR: &[&str] = &[
 
 impl Request {
     fn skill_script(&self) -> (&'static str, &'static str) {
-        if ADVANCED_COLOUR.contains(&self.operation.as_str()) {
+        if ["type_scale", "measure_text"].contains(&self.operation.as_str()) {
+            ("typography-intelligence", "SKILL.md")
+        } else if ADVANCED_COLOUR.contains(&self.operation.as_str()) {
             ("colour-intelligence-v2", "scripts/advanced.py")
         } else if self.operation == "compose_v2" {
             ("professional-document-design-v2", "scripts/v2.py")
@@ -146,7 +155,8 @@ impl Request {
         ensure!(
             ["palette", "contrast", "extract", "compose", "render"].contains(&operation)
                 || ADVANCED_COLOUR.contains(&operation)
-                || operation == "compose_v2",
+                || operation == "compose_v2"
+                || ["type_scale", "measure_text"].contains(&operation),
             "Unregistered design operation"
         );
         let value = serde_json::to_value(self)?;
@@ -159,6 +169,8 @@ impl Request {
             "categorical" => &["seed", "count"],
             "simulate" => &["seed", "mode"],
             "system" => &["seed", "theme"],
+            "type_scale" => &["mode", "size"],
+            "measure_text" => &["font", "sample", "size", "width"],
             _ => &["input", "output"],
         };
         for (key, value) in value.as_object().unwrap() {
@@ -226,6 +238,32 @@ impl Request {
             ensure!(
                 ["light", "dark"].contains(&self.theme.as_deref().unwrap_or("light")),
                 "Unsupported theme"
+            );
+        }
+        if operation == "type_scale" {
+            ensure!(
+                matches!(self.mode.as_deref(), Some("document" | "presentation")),
+                "Specify document or presentation"
+            );
+            ensure!(
+                (10..=28).contains(&self.size.unwrap_or(12)),
+                "Base size must be 10-28 points"
+            );
+        }
+        if operation == "measure_text" {
+            ensure!(
+                matches!(self.font.as_deref(), Some("Arial" | "Liberation Sans")),
+                "Unsupported font"
+            );
+            let sample = self.sample.as_deref().context("Text sample is required")?;
+            ensure!(
+                !sample.is_empty() && sample.len() <= 4096,
+                "Text sample must be 1-4096 bytes"
+            );
+            ensure!(
+                (8..=72).contains(&self.size.unwrap_or(12))
+                    && (40..=1200).contains(&self.width.unwrap_or(400)),
+                "Unsupported point size or width"
             );
         }
         if operation == "extract" {

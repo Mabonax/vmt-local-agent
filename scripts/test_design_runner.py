@@ -119,6 +119,30 @@ class DesignRunnerTests(unittest.TestCase):
                 runner.compose_checked({'soffice': 'unused', 'args': {'output': 'out.docx'}}, {},
                                        {'word': word}, theme, Path('artifact.docx'), False)
 
+    def test_type_scale(self):
+        scale = runner.run({'args': {'operation': 'type_scale', 'mode': 'document', 'size': 11}})
+        self.assertGreater(scale['title_pt'], scale['heading1_pt'])
+        self.assertGreater(scale['heading1_pt'], scale['body_pt'])
+        self.assertGreaterEqual(scale['caption_pt'], 9)
+        with self.assertRaises(ValueError):
+            runner.type_scale('invalid', 11)
+
+    def test_measure_text_real_font(self):
+        from unittest.mock import patch
+        from PIL import ImageFont
+        # Pillow ships a real embedded font; no OS font dependency for this fixture.
+        with patch.object(ImageFont, 'truetype', wraps=ImageFont.truetype) as original:
+            # Use an actual system font on Windows or Linux when available.
+            font = 'Arial' if os.name == 'nt' else 'Liberation Sans'
+            try:
+                runner.reviewed_font(font)
+            except (OSError, ValueError):
+                self.skipTest('Reviewed system font unavailable')
+            wide = runner.measure_text(font, 'A sentence with multiple words', 12, 400)
+            narrow = runner.measure_text(font, 'A sentence with multiple words', 12, 40)
+            self.assertGreater(narrow['line_count'], wide['line_count'])
+            self.assertTrue(original.called)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')

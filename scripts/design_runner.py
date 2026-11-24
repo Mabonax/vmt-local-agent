@@ -265,9 +265,56 @@ def compose_checked(request, data, namespace, theme, output, slides):
     raise ValueError('Structural review failed after bounded composition attempts')
 
 
+def type_scale(mode, size):
+    if mode not in ('document', 'presentation') or type(size) is not int or not 10 <= size <= 28:
+        raise ValueError('Invalid type scale')
+    if mode == 'document':
+        return {'title_pt': round(size * 2.5, 1), 'heading1_pt': round(size * 1.65, 1),
+                'heading2_pt': round(size * 1.3, 1), 'body_pt': size,
+                'caption_pt': max(9, round(size * .82, 1)), 'line_height': 1.25,
+                'paragraph_after_pt': round(size * .6, 1), 'guidance': 'Prefer roughly 45–80 characters per line; adapt to language and medium.'}
+    return {'title_pt': round(size * 1.8, 1), 'heading_pt': round(size * 1.35, 1),
+            'body_pt': size, 'caption_pt': max(12, round(size * .7, 1)),
+            'line_height': 1.2, 'guidance': 'Split crowded slides rather than shrink body text.'}
+
+
+def measure_text(font, sample, size, width):
+    from PIL import ImageFont
+    text(sample, 4096)
+    if not sample.strip() or type(size) is not int or not 8 <= size <= 72 or type(width) is not int or not 40 <= width <= 1200:
+        raise ValueError('Invalid measurement input')
+    # Measure at 288 DPI (four pixels per point) to reduce rounding.
+    face = ImageFont.truetype(reviewed_font(font), size * 4)
+    measure = lambda value: face.getlength(value) / 4
+    lines = []
+    oversized = False
+    for paragraph in sample.splitlines():
+        current = ''
+        for word in paragraph.split():
+            candidate = (current + ' ' + word).strip()
+            if measure(candidate) <= width:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+                oversized |= measure(word) > width
+        lines.append(current)
+    ascent, descent = face.getmetrics()
+    return {'font': font, 'size_pt': size, 'available_width_pt': width,
+            'line_count': len(lines), 'max_line_width_pt': round(max(map(measure, lines)), 2),
+            'estimated_height_pt': round(len(lines) * (ascent + descent) / 4, 2),
+            'unbreakable_word_overflow': oversized,
+            'limitation': 'Plain-text whitespace wrapping estimate, not native Office layout or glyph-coverage certification.'}
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
+    if operation == 'type_scale':
+        return type_scale(args['mode'], args.get('size', 12))
+    if operation == 'measure_text':
+        return measure_text(args['font'], args['sample'], args.get('size', 12), args.get('width', 400))
     namespace = {'__name__': '_reviewed_design_skill'}
     if operation in ['repair', 'gradient', 'categorical', 'simulate', 'system', 'distance']:
         # Both sources are pinned to the same reviewed package by the broker.
