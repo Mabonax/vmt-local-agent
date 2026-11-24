@@ -29,3 +29,4 @@ jobs:
       - run: python -B -m unittest discover -s tool-packs -p test_discovery.py
       - run: python -B -m unittest discover -s tool-packs -p test_security.py
       - run: python -B -m unittest discover -s tool-packs -p test_system.py
+      - run: python -B -m unittest discover -s tool-packs -p test_research.py
