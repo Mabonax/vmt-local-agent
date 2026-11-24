@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 ROOT=pathlib.Path(__file__).resolve().parent
-TRUSTED=("foundation","analysis","documents","repository","office","pdf")
+TRUSTED=("foundation","analysis","documents","repository","office","pdf","quality")
 LIMIT=1048576
 
 def validate(value, schema):
