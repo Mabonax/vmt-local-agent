@@ -180,6 +180,91 @@ def validate_office(path):
                             raise ValueError('External document fields are unsupported')
 
 
+def contrast_ratio(a, b):
+    def luminance(h):
+        channels = [int(h[i:i+2], 16) / 255 for i in (1, 3, 5)]
+        linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in channels]
+        return sum(v * w for v, w in zip(linear, (.2126, .7152, .0722)))
+    a, b = sorted((luminance(a), luminance(b)))
+    return (b + .05) / (a + .05)
+
+
+def repair_text_roles(theme):
+    changes = []
+    colours = theme['colour']
+    for role in ('text', 'primary'):
+        original = colours[role]
+        if contrast_ratio(original, colours['background']) < 4.5:
+            colours[role] = max(('#000000', '#FFFFFF'), key=lambda c: contrast_ratio(c, colours['background']))
+            changes.append({'role': role, 'before': original, 'after': colours[role]})
+    return changes
+
+
+def render_pdf(source, soffice, timeout):
+    profile = Path('office-profile').resolve()
+    pdf = source.with_suffix('.pdf')
+    if pdf.exists():
+        pdf.unlink()
+    subprocess.run([soffice, f'-env:UserInstallation={profile.as_uri()}', '--headless',
+                    '--convert-to', 'pdf', '--outdir', '.', str(source.resolve())],
+                   check=True, timeout=timeout, capture_output=True)
+    if not pdf.is_file():
+        raise ValueError('Renderer did not create PDF')
+    return pdf
+
+
+def compose_checked(request, data, namespace, theme, output, slides):
+    import time
+    import fitz
+    deadline = time.monotonic() + 105
+    repairs = repair_text_roles(theme)
+    attempts = []
+    maximum = theme['quality']['maximum_repair_attempts'] if slides else 1
+    for attempt in range(maximum):
+        if slides:
+            namespace['slides'](data, output, theme, 1 - attempt * .2)
+            from pptx import Presentation
+            from pptx.dml.color import RGBColor
+            deck = Presentation(output)
+            if len(deck.slides) > 40:
+                raise ValueError('V2 slide count exceeds 40')
+            for slide in deck.slides:
+                for shape in slide.shapes:
+                    if shape.has_table:
+                        for row in shape.table.rows:
+                            for cell in row.cells:
+                                cell.fill.solid()
+                                cell.fill.fore_color.rgb = RGBColor.from_string(theme['colour']['background'][1:])
+            deck.save(output)
+        else:
+            namespace['word'](data, output, theme)
+            # The upstream header fill is fixed; ensure it shares the checked background.
+            from docx import Document
+            from docx.oxml.ns import qn
+            doc = Document(output)
+            for table in doc.tables:
+                for cell in table.rows[0].cells:
+                    for shading in cell._tc.iter(qn('w:shd')):
+                        shading.set(qn('w:fill'), theme['colour']['background'][1:])
+            doc.save(output)
+        validate_office(output)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError('Composition exceeded time budget')
+        with fitz.open(render_pdf(output, request['soffice'], remaining)) as pdf:
+            if not 1 <= len(pdf) <= 40:
+                raise ValueError('Render must have 1-40 pages/slides')
+            report = structural_review(pdf)
+            attempts.append({'attempt': attempt + 1, 'pages': len(pdf),
+                             'issues': report['issues'], 'status': report['structural_status']})
+        if report['structural_status'] == 'PASS':
+            return {'created': request['args']['output'], 'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
+                    'visual_review': 'PENDING', 'structural_status': 'PASS', 'attempts': attempts,
+                    'colour_repairs': repairs, 'limitation': 'Text geometry checks only; run render for visual review images.'}
+    # Broker publishes only successful results. Never release a known failed candidate.
+    raise ValueError('Structural review failed after bounded composition attempts')
+
+
 def run(request):
     args = request['args']
     operation = args['operation']
@@ -229,27 +314,7 @@ def run(request):
         namespace['fontfile'] = reviewed_font
         t = namespace['theme'](data)
         output = Path('artifact.pptx' if slides else 'artifact.docx')
-        if slides:
-            namespace['slides'](data, output, t)
-            from pptx import Presentation
-            from pptx.dml.color import RGBColor
-            deck = Presentation(output)
-            if len(deck.slides) > 40:
-                raise ValueError('V2 slide count exceeds 40')
-            # The upstream table fills are fixed light colours. Apply the chosen
-            # semantic background so dark themes do not create light-on-white text.
-            for slide in deck.slides:
-                for shape in slide.shapes:
-                    if shape.has_table:
-                        for row in shape.table.rows:
-                            for cell in row.cells:
-                                cell.fill.solid()
-                                cell.fill.fore_color.rgb = RGBColor.from_string(t['colour']['background'][1:])
-            deck.save(output)
-        else:
-            namespace['word'](data, output, t)
-        validate_office(output)
-        return {'created': args['output'], 'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'visual_review': 'PENDING', 'structural_status': 'PENDING', 'limitation': 'Run render next; no automatic repair in this adapter increment.'}
+        return compose_checked(request, data, namespace, t, output, slides)
     if operation == 'compose':
         data = json.loads(Path('input').read_text(encoding='utf-8-sig'))
         slides = args['output'].lower().endswith('.pptx')

@@ -88,6 +88,37 @@ class DesignRunnerTests(unittest.TestCase):
         self.assertEqual(result['structural_status'], 'REVIEW_REQUIRED')
         self.assertTrue(any(x['type'] == 'possible_text_overlap' for x in result['issues']))
 
+    def test_repair_text_roles(self):
+        theme = {'colour': {'background': '#FFFFFF', 'text': '#EEEEEE', 'primary': '#BBBBBB', 'accent': '#123456'}}
+        changes = runner.repair_text_roles(theme)
+        self.assertEqual(len(changes), 2)
+        self.assertEqual(theme['colour']['accent'], '#123456')
+        for role in ('text', 'primary'):
+            self.assertGreaterEqual(runner.contrast_ratio(theme['colour'][role], '#FFFFFF'), 4.5)
+
+    def test_checked_composition_blocks_failed_candidate(self):
+        from unittest.mock import patch
+        from docx import Document
+        import fitz
+        def word(data, output, theme):
+            doc = Document()
+            doc.add_paragraph('Native editable content')
+            doc.save(output)
+        def bad_render(*args):
+            pdf = fitz.open()
+            page = pdf.new_page()
+            page.insert_text((50, 80), 'First line')
+            page.insert_text((50, 80), 'Second line')
+            pdf.save('bad.pdf')
+            pdf.close()
+            return 'bad.pdf'
+        theme = {'colour': {'background': '#FFFFFF', 'text': '#111111', 'primary': '#111111'},
+                 'quality': {'maximum_repair_attempts': 3}}
+        with patch.object(runner, 'render_pdf', side_effect=bad_render):
+            with self.assertRaisesRegex(ValueError, 'Structural review failed'):
+                runner.compose_checked({'soffice': 'unused', 'args': {'output': 'out.docx'}}, {},
+                                       {'word': word}, theme, Path('artifact.docx'), False)
+
     def test_image_format_allowlist(self):
         from PIL import Image, UnidentifiedImageError
         Image.new('RGB', (10, 10), 'red').save('input', format='TIFF')
