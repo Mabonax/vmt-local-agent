@@ -1,0 +1,23 @@
+name: Tool packs
+on:
+  push:
+    branches: [codex/tool-pack-foundation]
+    paths: ['tool-packs/**', '.github/workflows/tool-packs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -B tool-packs/check_packs.py
