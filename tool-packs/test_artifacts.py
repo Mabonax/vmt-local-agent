@@ -42,3 +42,14 @@ class ArtifactTests(unittest.TestCase):
             data=path.read_bytes()
             path.write_bytes(data[:-1]+bytes([data[-1]^1]))
             with self.assertRaises(ValueError): store.retrieve(record["artifact_id"])
+
+    def test_preview_pipeline(self):
+        with tempfile.TemporaryDirectory() as d:
+            host=ArtifactHost(ArtifactStore(d))
+            pdf=host.call("pdf.generate",{"title":"Report","body":"Example"})["result"]
+            png=host.call("pdf.render",{"artifact_id":pdf["artifact_id"],"page":1,"dpi":72})["result"]
+            self.assertEqual(png["extension"],"png")
+            self.assertNotIn("content",png)
+            stats=host.call("image.inspect",{"artifact_id":png["artifact_id"]})["result"]
+            self.assertGreater(stats["nonwhite_fraction"],0)
+            self.assertEqual(host.call("image.compare",{"first_id":png["artifact_id"],"second_id":png["artifact_id"]})["result"]["changed_fraction"],0)
