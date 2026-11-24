@@ -23,11 +23,15 @@ fn main() -> anyhow::Result<()> {
                 &selected, project, protocol,
             );
         }
-        "--document-task" => {
+        "--document-task" | "--document-collision-task" => {
             let input = std::env::args()
                 .nth(3)
                 .ok_or_else(|| anyhow::anyhow!("Provide model and original DOCX path"))?;
-            return vmt_local_agent::verification::document_task_check(&selected, &input);
+            return vmt_local_agent::verification::document_task_check_case(
+                &selected,
+                &input,
+                model == "--document-collision-task",
+            );
         }
         "--design-live" => {
             let source = std::env::args()

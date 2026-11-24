@@ -3,13 +3,19 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default)]
-pub struct Failures(BTreeMap<(String, String), Value>);
+pub struct Failures(BTreeMap<(String, String), (Value, bool)>);
 impl Failures {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
     pub fn failed(&mut self, tool: &str, args: &Value) {
-        self.0.insert((tool.into(), args.to_string()), args.clone());
+        self.0
+            .insert((tool.into(), args.to_string()), (args.clone(), false));
+    }
+    pub fn failed_preflight(&mut self, tool: &str, args: &Value) {
+        self.0
+            .entry((tool.into(), args.to_string()))
+            .or_insert((args.clone(), true));
     }
     pub fn succeeded(&mut self, tool: &str, args: &Value) {
         self.0.remove(&(tool.into(), args.to_string()));
@@ -22,8 +28,38 @@ impl Failures {
             )
             && let Some(input) = args["input"].as_str()
         {
-            self.0.retain(|(name, _), old| {
+            self.0.retain(|(name, _), (old, _)| {
                 name != "read_file" || old["path"].as_str() != Some(input)
+            });
+        }
+        // Only validation failures have no possible side effects. A successful
+        // equivalent design operation may use a different unused output name.
+        // Execution failures and commands still require their own reconciliation.
+        let operation = |tool: &str, args: &Value| {
+            crate::design_tools::operation(tool)
+                .map(str::to_string)
+                .or_else(|| args["operation"].as_str().map(str::to_string))
+        };
+        let op = operation(tool, args);
+        if crate::design_tools::is_tool(tool)
+            && matches!(op.as_deref(), Some("format_document" | "render"))
+        {
+            let comparable = |args: &Value| {
+                let mut value = args.clone();
+                if let Some(object) = value.as_object_mut() {
+                    object.remove("output");
+                    object.remove("operation");
+                    if op.as_deref() == Some("format_document") {
+                        object.entry("preset").or_insert(Value::String("cv".into()));
+                    }
+                }
+                value
+            };
+            self.0.retain(|(name, _), (old, preflight)| {
+                !(*preflight
+                    && crate::design_tools::is_tool(name)
+                    && operation(name, old) == op
+                    && comparable(old) == comparable(args))
             });
         }
     }
@@ -97,5 +133,29 @@ mod tests {
         let result = incomplete(&failures, true, &BTreeSet::new());
         assert!(result.contains("No verified formatted Word output"));
         assert!(!result.contains("private argument"));
+    }
+    #[test]
+    fn new_output_recovers_only_equivalent_preflight_design_failures() {
+        let old = json!({"input":"CV.docx","output":"exists.docx","accent":"#087F83"});
+        let new = json!({"operation":"format_document","input":"CV.docx","output":"new.docx","accent":"#087F83","preset":"cv"});
+        let mut failures = Failures::default();
+        failures.failed_preflight("format_document", &old);
+        failures.succeeded("design_tool", &json!({"operation":"format_document","input":"other.docx","output":"new.docx","accent":"#087F83"}));
+        assert!(!failures.is_empty());
+        failures.succeeded("design_tool", &json!({"operation":"format_document","input":"CV.docx","output":"new.docx","accent":"#000000"}));
+        assert!(!failures.is_empty());
+        failures.succeeded("design_tool", &new);
+        assert!(failures.is_empty());
+        // A possibly partial execution failure cannot be erased by a rename,
+        // including after a subsequent preflight rejection of the same request.
+        failures.failed("format_document", &old);
+        failures.failed_preflight("format_document", &old);
+        failures.succeeded("design_tool", &new);
+        assert!(!failures.is_empty());
+        failures.succeeded("format_document", &old);
+        assert!(failures.is_empty());
+        failures.failed("run_command", &json!({"command":"mkdir existing"}));
+        failures.succeeded("design_tool", &new);
+        assert!(!failures.is_empty());
     }
 }

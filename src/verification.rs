@@ -1066,6 +1066,10 @@ pub fn design_skills_check(model: &str, source: &str) -> Result<()> {
 /// User-document evaluation through the actual local model and reviewed broker.
 /// Only an unchanged source copy is exposed; no command or arbitrary write is approved.
 pub fn document_task_check(model: &str, input: &str) -> Result<()> {
+    document_task_check_case(model, input, false)
+}
+
+pub fn document_task_check_case(model: &str, input: &str, collision: bool) -> Result<()> {
     use sha2::{Digest, Sha256};
     let original = std::path::Path::new(input).canonicalize()?;
     ensure!(
@@ -1089,13 +1093,22 @@ pub fn document_task_check(model: &str, input: &str) -> Result<()> {
     let project = root.join("project");
     fs::create_dir_all(&project)?;
     fs::write(project.join("CV_Template.docx"), bytes)?;
+    let expected_output = if collision {
+        fs::copy(
+            project.join("CV_Template.docx"),
+            project.join("CV_Template_Refined.docx"),
+        )?;
+        "CV_Template_Refined-2.docx"
+    } else {
+        "CV_Template_Refined.docx"
+    };
     store::configure_data_dir(root.join("profile"))?;
     fs::write(store::data_dir().join("skill-libraries.json"), registry)?;
     fs::write(store::data_dir().join("design-runtime.json"), runtime)?;
     let request = "Improve the formatting of CV_Template.docx using BOTH added skills, colour-intelligence and professional-document-design. Preserve every word and placeholder; do not invent or remove CV content. Use the colour skill to choose and audit a restrained accessible accent and apply that accent to the existing document. Create CV_Template_Refined.docx as a real, changed Word file. Use the dedicated existing-document operations, not copying or JSON recomposition. Render the original into review-before and the result into review-cv so a human can compare them. Do not use shell commands, internet, MCP or memory writes. The source must stay unchanged. You have no image-viewing tool: report honestly what was executed and what visual review remains. Work through the actual tools; a response alone is not completion.";
     let settings = Settings {
         model: model.into(),
-        context_tokens: 12288,
+        context_tokens: 16384,
         max_steps: 40,
         ..Default::default()
     };
@@ -1136,11 +1149,11 @@ pub fn document_task_check(model: &str, input: &str) -> Result<()> {
                         "palette" | "contrast" => true,
                         "inspect_document" => {
                             r.input.as_deref() == Some("CV_Template.docx")
-                                || r.input.as_deref() == Some("CV_Template_Refined.docx")
+                                || r.input.as_deref() == Some(expected_output)
                         }
                         "format_document" => {
                             r.input.as_deref() == Some("CV_Template.docx")
-                                && r.output.as_deref() == Some("CV_Template_Refined.docx")
+                                && r.output.as_deref() == Some(expected_output)
                         }
                         "render" => {
                             r.input.as_deref().is_some_and(|input| {
@@ -1149,7 +1162,7 @@ pub fn document_task_check(model: &str, input: &str) -> Result<()> {
                                 };
                                 workspace.resolve(input, false).is_ok_and(|path| {
                                     path == plan.workspace.join("CV_Template.docx")
-                                        || path == plan.workspace.join("CV_Template_Refined.docx")
+                                        || path == plan.workspace.join(expected_output)
                                 })
                             }) && r.output.is_some()
                         }
@@ -1208,7 +1221,7 @@ pub fn document_task_check(model: &str, input: &str) -> Result<()> {
             "{:x}",
             Sha256::digest(fs::read(project.join("CV_Template.docx"))?)
         ) == original_hash;
-    let output = project.join("CV_Template_Refined.docx");
+    let output = project.join(expected_output);
     let output_hash = if output.is_file() {
         format!("{:x}", Sha256::digest(fs::read(&output)?))
     } else {
@@ -1239,21 +1252,62 @@ pub fn document_task_check(model: &str, input: &str) -> Result<()> {
     let content = operations
         .iter()
         .any(|value| value["operation"] == "format_document" && value["content_preserved"] == true);
-    let render = project.join("review-cv/review.json").is_file();
+    // Verify the actual reviewed artifact by hash and complete page files. A
+    // directory name alone cannot establish that the correct DOCX was rendered.
+    let render_for = |hash: &str| {
+        operations.iter().any(|result| {
+            if result["artifact_sha256"] != hash || result["render_status"] != "PASS" {
+                return false;
+            }
+            let Some(directory) = result["review_directory"].as_str() else {
+                return false;
+            };
+            let Ok(directory) = (Workspace {
+                root: project.clone(),
+            })
+            .resolve(directory, false) else {
+                return false;
+            };
+            let Ok(bytes) = fs::read(directory.join("review.json")) else {
+                return false;
+            };
+            let Ok(receipt) = serde_json::from_slice::<Value>(&bytes) else {
+                return false;
+            };
+            let pages = receipt["pages"].as_u64().unwrap_or(0);
+            receipt["artifact_sha256"] == hash
+                && receipt["render_status"] == "PASS"
+                && (1..=40).contains(&pages)
+                && (1..=pages).all(|page| directory.join(format!("page-{page:03}.png")).is_file())
+        })
+    };
+    let render = render_for(&output_hash);
+    let rendered_before = render_for(&original_hash);
+    let existing_output_preserved = !collision
+        || format!(
+            "{:x}",
+            Sha256::digest(fs::read(project.join("CV_Template_Refined.docx"))?)
+        ) == original_hash;
     let passed = loaded.len() == 2
         && palette
         && palette_applied
         && contrast
         && content
         && original_preserved
+        && existing_output_preserved
         && !output_hash.is_empty()
         && output_hash != original_hash
         && render
+        && rendered_before
         && errors.is_empty()
         && denied == 0
         && !answer.starts_with("Task incomplete")
         && !answer.starts_with("Paused:");
-    let report = json!({"passed":passed,"model":model,"skills_loaded":loaded,"palette_executed":palette,"palette_accent_applied":palette_applied,"contrast_executed":contrast,"formatting_content_preserved":content,"original_preserved":original_preserved,"source_sha256":original_hash,"output_sha256":output_hash,"rendered":render,"accent":selected_accent,"explicit_approvals":approvals,"unexpected_actions_denied":denied,"denied_design_requests":denied_design_requests,"failed_tools":failed_tools,"errors":errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"visual_review":"PENDING"});
+    let review_directories: Vec<_> = operations
+        .iter()
+        .filter_map(|value| value["review_directory"].as_str())
+        .collect();
+    let report = json!({"passed":passed,"model":model,"collision_fixture":collision,"existing_output_preserved":existing_output_preserved,"skills_loaded":loaded,"palette_executed":palette,"palette_accent_applied":palette_applied,"contrast_executed":contrast,"formatting_content_preserved":content,"original_preserved":original_preserved,"source_sha256":original_hash,"output_sha256":output_hash,"rendered":render,"rendered_before":rendered_before,"review_directories":review_directories,"requested_review_names_used":review_directories.contains(&"review-before") && review_directories.contains(&"review-cv"),"accent":selected_accent,"explicit_approvals":approvals,"unexpected_actions_denied":denied,"denied_design_requests":denied_design_requests,"failed_tools":failed_tools,"errors":errors,"elapsed_seconds":started.elapsed().as_secs_f64(),"visual_review":"PENDING"});
     fs::write(
         root.join("report.json"),
         serde_json::to_vec_pretty(&report)?,

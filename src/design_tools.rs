@@ -514,9 +514,32 @@ impl Request {
             );
             let path = workspace.resolve(output, true)?;
             ensure!(
-                !path.exists() && path.parent().is_some_and(Path::is_dir),
-                "Output must be new and its parent must exist"
+                path.parent().is_some_and(Path::is_dir),
+                "Output parent directory does not exist. Nothing was executed. Use a new filename directly in the existing project directory; do not create folders through shell commands for this operation."
             );
+            if path.exists() {
+                let relative = PathBuf::from(output.replace('\\', "/"));
+                let stem = relative.file_stem().unwrap_or_default().to_string_lossy();
+                let extension = relative
+                    .extension()
+                    .map(|v| format!(".{}", v.to_string_lossy()))
+                    .unwrap_or_default();
+                let suggestion = (2..=100).find_map(|number| {
+                    let candidate = relative.with_file_name(format!("{stem}-{number}{extension}"));
+                    let name = candidate.to_string_lossy().replace('\\', "/");
+                    workspace
+                        .resolve(&name, true)
+                        .ok()
+                        .filter(|p| !p.exists())
+                        .map(|_| name)
+                });
+                anyhow::bail!(
+                    "Output already exists. Nothing was executed. Preserve that file and request a NEW output filename in the SAME directory. Suggested output: {}. Do not create directories or use shell commands to fix a filename collision.",
+                    suggestion
+                        .map(|s| format!("{s:?}"))
+                        .unwrap_or_else(|| "choose another unused filename".into())
+                );
+            }
             if operation == "render" {
                 let suffix = path
                     .extension()
@@ -965,6 +988,26 @@ mod tests {
         )
         .unwrap();
         assert!(request.validate(&ws).is_err());
+        fs::write(directory.path().join("out-2.docx"), "keep too").unwrap();
+        let collision = request.validate(&ws).unwrap_err().to_string();
+        assert!(collision.contains("Output already exists"));
+        assert!(collision.contains("out-3.docx"));
+        assert!(!directory.path().join("out-3.docx").exists());
+        assert_eq!(
+            fs::read_to_string(directory.path().join("out.docx")).unwrap(),
+            "keep"
+        );
+        let missing_parent: Request = serde_json::from_value(
+            json!({"operation":"compose","input":"input.json","output":"missing/out.docx"}),
+        )
+        .unwrap();
+        assert!(
+            missing_parent
+                .validate(&ws)
+                .unwrap_err()
+                .to_string()
+                .contains("parent directory does not exist")
+        );
         let valid: Request = serde_json::from_value(
             json!({"operation":"contrast","foreground":"#000000","background":"#FFFFFF"}),
         )
