@@ -4,6 +4,7 @@ pub mod design_tools;
 pub mod document_cover;
 pub mod document_trial;
 pub mod execution;
+pub mod factual_evidence;
 pub mod knowledge;
 pub mod mcp;
 pub mod memory;
