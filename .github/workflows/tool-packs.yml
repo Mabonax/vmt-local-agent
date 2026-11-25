@@ -1,7 +1,7 @@
 name: Tool packs
 on:
   push:
-    branches: [codex/tool-pack-foundation, codex/local-agent-unified-integration]
+    branches: [main, codex/tool-pack-foundation, codex/local-agent-unified-integration]
     paths: ['tool-packs/**', '.github/workflows/tool-packs.yml']
   workflow_dispatch:
 permissions:

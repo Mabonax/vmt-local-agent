@@ -503,3 +503,20 @@ using the main README before refreshing capabilities. Do not share a running
 desktop's workspace/profile with CLI artifact writers. Use `git status --short`,
 `git log -5 --oneline` and `git rev-parse HEAD` for delivery state; this report is
 committed after the implementation commits listed above.
+
+## Main branch promotion — 25 November 2026
+
+The operator subsequently authorised committing and pushing all completed
+integration work to `main`. The local main branch was fast-forwarded from
+`5d56e91a530c9278081221c81dae68117ea411cc` to integration commit
+`18d9456c5ca0ee3854b66dd35890f61912911a76`, preserving its 214 commits of history.
+The tool-pack workflow now includes `main` in its push branches so Windows/Linux
+Python checks continue alongside Rust validation after promotion.
+
+Before promotion, the working tree was clean and the outgoing tracked-file and
+history audit found no private paths, large blobs or credential-pattern matches;
+all 16 exclusion probes passed. Private profiles, credentials, model weights,
+virtual environments, acceptance outputs, recovery bundles and executables remain
+excluded. This promotion does not change the integration limitations recorded
+above. Remote publication and the final commit's hosted CI results must be
+verified independently; this section records the local promotion preparation.
