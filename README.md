@@ -41,7 +41,7 @@ Python venv outside the model's workspace, build with Cargo, and configure absol
 Python/LibreOffice paths in the same way. Linux execution has not been accepted
 on this Windows workstation.
 
-Current checks: **147 automated test executions pass**, plus eight integrated
+Current checks: **148 automated test executions pass**, plus eight integrated
 acceptance scenarios and two actual review/cancellation checks. Qwen 3.5 4B
 completed native document/workflow calls and cited knowledge retrieval at a
 16,384-token context. Generated report prose still needs factual review; two
@@ -57,9 +57,11 @@ workflow with one exact review for the source, new output, page rendering and
 artifact registration. It saves `CV_Template_With_Cover.docx` beside the source,
 retains existing names/contact placeholders and preserves all original body
 elements and other Office package parts. Repeats use a new numbered filename.
-Denying the action creates no new CV. This targeted workflow does not depend on
-model planning or portable skill loading; it does not certify general autonomous
-document editing. Ambiguous source documents require an explicit filename.
+Denying the action creates no new CV. The workflow applies registered Professional
+Document Design V2 guidance and executes Colour Intelligence V2 palette/contrast
+functions, with their fingerprints bound to the exact review and recorded in the
+result. It does not depend on model planning or certify general autonomous
+editing. Ambiguous source documents require an explicit filename.
 
 ## Open the app
 

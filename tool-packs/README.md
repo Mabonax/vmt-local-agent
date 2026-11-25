@@ -61,6 +61,13 @@ The Rust host alone writes the selected workspace output. The existing file is
 never overwritten. LibreOffice is required before this workflow is advertised.
 Agent mode routes an explicit matching CV-cover request through this fixed
 workflow instead of repeated model-selected inspection/composition attempts.
+The cover applies the enabled, fingerprint-verified Professional Document Design
+V2 standard and executes the reviewed Colour Intelligence V2 palette/audit code.
+The review binds both package fingerprints; changed or unavailable packages stop
+preparation/execution. The result records typography/colour tokens, used colour
+pair contrast checks and the two skill fingerprints. These checks do not certify
+general aesthetic quality or factuality. Installed private skill packages are
+read through the host registry; project file tools still cannot read profiles.
 
 The operator-only CLI can execute an exact reviewed request file:
 

@@ -13,6 +13,48 @@ On 25 November the operator explicitly authorized publishing this branch, with
 no main merge, force push, PR or release. See the update below; final delivery
 reports the verified remote SHA and actual GitHub Actions status.
 
+## Follow-up design-skill correction
+
+The operator correctly rejected the first cover as a plain fixed layout. That
+version preserved the source, but did not apply the installed design packages.
+Further inspection found a real regression: the model-file private-profile guard
+also blocked trusted registry inventory/resource reads under the application's
+own `skill-packages` directory. All four Colour Intelligence/Professional
+Document Design V1/V2 packages appeared as "review required" despite unchanged
+reviewed bytes. This explains the reported `load_skill`/design adapter failures.
+
+The fix adds a crate-private registered-resource resolver for the host registry.
+Workspace scoping, sensitive-name, link/junction and traversal checks remain;
+model project file tools retain their private-profile prohibition. Registered
+skill reads still require exact approved package/resource hashes. A separate
+integration test proves private installed skills can load, model reads cannot
+access those same files, traversal is rejected and resource drift blocks loading.
+No package was silently re-approved or edited to bypass its fingerprint.
+The actual normal-profile `inspect_document` operation was also rerun successfully
+against the requested CV, with the source unchanged; all four installed design/
+colour packages again report enabled.
+
+The cover now binds the reviewed Professional Document Design V2 guidance and
+Colour Intelligence V2 code to its single review, executes the latter's palette/
+contrast functions and records both package fingerprints. It uses a navy name
+panel with a teal accent, native editable CV badge, consistent typography and a
+structured contact table. Actual used colour pairs passed normal-text contrast
+checks (minimum measured ratio 5.07:1). No claim of complete accessibility or
+semantic factuality follows from those colour metrics.
+
+The actual agent/broker denial/approve/repeat checks passed again with one review
+per operation and four rendered pages. The first fixed plain output remains
+preserved; the designed version is a separately named DOCX. Original body nodes,
+section settings and other package parts remain unchanged. All rendered pages
+were inspected, including a second render through the packaged DOCX renderer.
+
+Latest local verification is **148 passing test executions**: 58 Rust library,
+4 Rust integration, 50 Python host, 35 pack unit and 1 acceptance wrapper. fmt,
+Clippy and the optimized desktop build passed. The historical 147/142 counts
+below refer to earlier acceptance stages. The first published commit `ce22a8d`
+passed both Rust validation and all four Windows/Linux Python matrix jobs;
+subsequent publication status is reported against the actual final remote SHA.
+
 ## 25 November cover-page correction and publication verification
 
 The subsequent operator-reported CV-cover run exposed an unsupported edit: the

@@ -384,6 +384,7 @@ pub struct Plan {
     pub input_sha256: Option<String>,
     pub artifact_hashes: BTreeMap<String, String>,
     pub collection: String,
+    pub design_fingerprints: BTreeMap<String, String>,
 }
 pub fn validate(value: &Value, schema: &Value, depth: usize) -> Result<()> {
     ensure!(depth <= 20, "Input nesting exceeds limit");
@@ -528,7 +529,13 @@ pub fn prepare(
     }
     let config = config()?;
     verify_code()?;
+    let mut design_fingerprints = BTreeMap::new();
     if tool == "document.add_cover" {
+        let registry = crate::portable_skills::Registry::load()?;
+        for id in ["professional-document-design-v2", "colour-intelligence-v2"] {
+            let (_, fingerprint) = registry.adapter_script(id, "SKILL.md")?;
+            design_fingerprints.insert(id.into(), fingerprint);
+        }
         cover_destination(workspace, &arguments)?;
         ensure!(
             config.soffice.is_some(),
@@ -600,6 +607,7 @@ pub fn prepare(
         input_sha256,
         artifact_hashes,
         collection: collection(workspace),
+        design_fingerprints,
     })
 }
 pub fn mutates(plan: &Plan) -> bool {
@@ -621,7 +629,7 @@ pub fn mutates(plan: &Plan) -> bool {
 }
 pub fn review(plan: &Plan) -> String {
     format!(
-        "Reviewed local capability: {}\nArguments:\n{}\nPrevious revision: {:?}\nInput SHA-256: {:?}\nReferenced artifact digests: {:?}\nPython: {}\nCode fingerprint: {}\nKnowledge collection: {}\nA one-use 60-second capability token is issued only after this review. Binary artifacts remain private. This runtime is not an OS filesystem/network sandbox.",
+        "Reviewed local capability: {}\nArguments:\n{}\nPrevious revision: {:?}\nInput SHA-256: {:?}\nReferenced artifact digests: {:?}\nPython: {}\nCode fingerprint: {}\nKnowledge collection: {}\nDesign skills (reviewed fingerprints): {:?}\nA one-use 60-second capability token is issued only after this review. Binary artifacts remain private. This runtime is not an OS filesystem/network sandbox.",
         plan.tool,
         serde_json::to_string_pretty(&plan.arguments).unwrap_or_default(),
         plan.previous,
@@ -629,7 +637,8 @@ pub fn review(plan: &Plan) -> String {
         plan.artifact_hashes,
         plan.config.python,
         plan.config.code_sha256,
-        plan.collection
+        plan.collection,
+        plan.design_fingerprints
     )
 }
 
@@ -641,6 +650,34 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         "Reviewed runtime/workspace/collection changed"
     );
     verify_code()?;
+    let design = if plan.tool == "document.add_cover" {
+        let registry = crate::portable_skills::Registry::load()?;
+        for (id, expected) in &plan.design_fingerprints {
+            ensure!(
+                registry.adapter_script(id, "SKILL.md")?.1 == *expected,
+                "Design skill changed after cover review"
+            );
+        }
+        let (colour_script, colour_fp) =
+            registry.adapter_script("colour-intelligence-v2", "scripts/colour.py")?;
+        let (standard, document_fp) = registry.adapter_script(
+            "professional-document-design-v2",
+            "references/design-standard.md",
+        )?;
+        ensure!(
+            plan.design_fingerprints.get("colour-intelligence-v2") == Some(&colour_fp)
+                && plan
+                    .design_fingerprints
+                    .get("professional-document-design-v2")
+                    == Some(&document_fp),
+            "Cover design resources changed after review"
+        );
+        Some(
+            json!({"colour_script":colour_script,"professional_standard":standard,"fingerprints":plan.design_fingerprints}),
+        )
+    } else {
+        None
+    };
     if plan.tool == "document.add_cover" {
         cover_destination(workspace, &plan.arguments)?;
     }
@@ -675,7 +712,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
     };
     let approval = rpc(
         workspace,
-        json!({"action":"approve","tool":plan.tool,"arguments":plan.arguments,"previous":plan.previous,"attachment":attachment}),
+        json!({"action":"approve","tool":plan.tool,"arguments":plan.arguments,"previous":plan.previous,"attachment":attachment,"design":design}),
         cancel,
     )?;
     let mut result = rpc(

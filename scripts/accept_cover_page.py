@@ -1,5 +1,5 @@
 """Actual agent/broker acceptance for one-review existing-CV cover production."""
-import argparse,hashlib,json,pathlib,shutil,subprocess,sys,zipfile
+import argparse,hashlib,json,pathlib,shutil,subprocess,sys,zipfile,os
 from lxml import etree as ET
 
 def main():
@@ -7,6 +7,9 @@ def main():
     args=parser.parse_args();root=pathlib.Path(args.root).resolve();checker=str(pathlib.Path(args.checker).resolve());source=pathlib.Path(args.source).resolve()
     if '.local' not in root.parts or root.exists():raise ValueError('Select a NEW isolated .local acceptance directory')
     root.mkdir(parents=True);workspace=root/'project';workspace.mkdir();profile=root/'profile';base=['--data-dir',str(profile)]
+    profile.mkdir()
+    registry=pathlib.Path(os.environ.get('LOCALAPPDATA',''))/'VMT'/'LocalAgent'/'skill-libraries.json'
+    if registry.is_file():shutil.copyfile(registry,profile/'skill-libraries.json')
     original=source.read_bytes();digest=hashlib.sha256(original).hexdigest();shutil.copyfile(source,workspace/'CV_Template.docx')
     request=root/'request.txt';request.write_text('add cover page to this cv_template',encoding='utf-8')
     def run(*argv):
@@ -30,6 +33,8 @@ def main():
             assert len(complete)==1 and complete[0]['tool']=='pack__document_add_cover'
             result=json.loads(complete[0]['detail'])['result']
             assert result['saved_to_workspace'] and result['preservation']['original_body_preserved'] and result['preservation']['unchanged_package_parts']
+            assert set(result['preservation']['design']['skills'])=={'professional-document-design-v2','colour-intelligence-v2'}
+            assert all(item['AA_normal'] for item in result['preservation']['design']['contrast_checks'])
             assert result['preview']['structural_status']=='PASS' and result['preview']['pages']
             assert hashlib.sha256(expected.read_bytes()).hexdigest()==result['sha256']
             with zipfile.ZipFile(source) as old,zipfile.ZipFile(expected) as new:

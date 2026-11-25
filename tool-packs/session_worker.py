@@ -38,6 +38,7 @@ class Session:
         self._policy=None; self._store=None; self._knowledge=None
         self._lease=None
         self._snapshots={}; self._research=None; self._adapter=None
+        self._designs={}
 
     def host(self):
         if self._policy is not None: return self._policy
@@ -105,14 +106,17 @@ class Session:
             snapshot=base64.b64decode(attachment,validate=True) if attachment is not None else None
             if snapshot is not None and len(snapshot)>1048576: raise ValueError('Attachment exceeds limit')
             self._snapshots[token]=snapshot
+            self._designs[token]=request.get('design')
             return {'approval':token}
         if action=='call':
             policy=self.host(); token=request.get('approval')
             self._adapter.input_bytes=self._snapshots.pop(token,None)
+            self._adapter.design=self._designs.pop(token,None)
             try:
                 result=policy.call(request['tool'],request['arguments'],previous=request.get('previous'),approval=token)
             finally:
                 self._adapter.input_bytes=None
+                self._adapter.design=None
                 self._research._hosts=frozenset()
             # No binary envelopes or private approval fields may reach reasoning.
             if len(json.dumps(result,ensure_ascii=False).encode())>32000: raise ValueError('Model result exceeds limit')

@@ -214,7 +214,7 @@ pub fn run(
                 state: "Complete".into(),
                 detail: text,
             }));
-            let _=tx.send(Event::Final(format!("Saved `{output}` beside the original CV. The existing CV content and package parts were preserved; {pages} pages were rendered and checked. Visual review remains pending.\n\nExecution record: 1 reviewed document workflow; 1 saved DOCX; 0 commands; 0 web requests.")));
+            let _=tx.send(Event::Final(format!("Saved `{output}` beside the original CV using Professional Document Design V2 and Colour Intelligence V2. The CV content and other package parts were preserved; {pages} pages were rendered and checked. Visual review remains pending.\n\nExecution record: 1 reviewed document workflow; 1 saved DOCX; 0 commands; 0 web requests.")));
             Ok(())
         }
         Err(error) => {

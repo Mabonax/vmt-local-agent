@@ -40,6 +40,7 @@ class HostAdapter:
         self.delegate=delegate; self.store=store; self.knowledge=knowledge
         self.workspace=pathlib.Path(workspace); self.soffice=soffice; self.cancel=cancel
         self.input_bytes=None
+        self.design=None
 
     def call(self,name,args,previous=None):
         if name=='web.fetch':
@@ -90,10 +91,20 @@ class HostAdapter:
             if self.input_bytes is None: raise PermissionError('Reviewed input snapshot required')
             if not self.soffice: raise ValueError('A reviewed LibreOffice renderer is required for cover verification')
             from document_cover import add_cover
+            if not isinstance(self.design,dict) or not self.design.get('fingerprints'):raise PermissionError('Reviewed design skills are required for the cover workflow')
+            standard=self.design['professional_standard']
+            if any(token not in standard for token in ('#172B45','#087F83','#263445','Liberation Sans')):raise ValueError('Unsupported reviewed document design standard')
+            colours={'__name__':'vmt_reviewed_colour'}
+            exec(compile(self.design['colour_script'],'<reviewed-colour-intelligence-v2>','exec'),colours)
+            palette=colours['palette']('#087F83','analogous','light')
+            tokens={'primary':'#172B45','accent':palette['roles']['primary'],'text':'#263445','surface':'#EDF5F5','background':'#FFFFFF','font':'Liberation Sans'}
+            checks=[colours['audit'](a,b) for a,b in [(tokens['primary'],'#FFFFFF'),('#FFFFFF',tokens['primary']),(tokens['text'],tokens['surface']),(tokens['accent'],'#FFFFFF')]]
+            if any(not pair['AA_normal'] for pair in checks):raise ValueError('Cover colour contrast failed')
             with tempfile.TemporaryDirectory() as folder:
                 source=pathlib.Path(folder)/'source.docx';source.write_bytes(self.input_bytes)
                 validate_input_office(source)
-            raw,preservation=add_cover(self.input_bytes)
+            raw,preservation=add_cover(self.input_bytes,tokens)
+            preservation['design']={'skills':self.design['fingerprints'],'tokens':tokens,'contrast_checks':checks,'source':'Applied reviewed Professional Document Design V2 guidance and executed Colour Intelligence V2 palette/audit functions'}
             artifact=self.store.store({'extension':'docx','encoding':'base64','bytes':len(raw),'content':base64.b64encode(raw).decode('ascii')})
             preview=self.preview(artifact['artifact_id'])
             if preview['structural_status']!='PASS':raise ValueError('Cover rendering requires layout correction before publishing')

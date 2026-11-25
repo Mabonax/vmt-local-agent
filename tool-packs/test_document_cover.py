@@ -28,7 +28,11 @@ class CoverTests(unittest.TestCase):
             self.assertEqual([ET.tostring(n) for n in old],[ET.tostring(n) for n in list(new)[-len(old):]])
         doc=Document(io.BytesIO(result));self.assertEqual(doc.paragraphs[0].text,'Curriculum Vitae')
         self.assertIn('[YOUR FULL NAME]',doc.paragraphs[1].text)
-        self.assertEqual(doc.tables[0].cell(0,0).text,'Original table sentinel')
+        self.assertEqual(doc.tables[-1].cell(0,0).text,'Original table sentinel')
+        self.assertEqual(doc.tables[0].cell(0,0).text,'Email')
+        self.assertEqual(len(doc.tables),2)
+        with zipfile.ZipFile(io.BytesIO(result)) as package:
+            self.assertIn(b'fillcolor="#172B45"',package.read('word/document.xml'))
         self.assertEqual(doc.sections[0].header.paragraphs[0].text,'Original header')
 
     def test_empty_and_signed_documents_are_rejected(self):
