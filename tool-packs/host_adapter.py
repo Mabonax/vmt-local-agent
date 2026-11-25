@@ -33,7 +33,7 @@ SCHEMAS={
     'knowledge.ingest':obj({'path':PATH,'title':{'type':'string','minLength':1,'maxLength':300}}),
     'office.preview':obj({'artifact_id':ID}),
     'artifact.compare':obj({'first_id':ID,'second_id':ID}),
-    'workflow.run':obj({'template':{'type':'string','enum':['pdf_preview']},'inputs':obj({'title':{'type':'string','minLength':1,'maxLength':100},'body':{'type':'string','maxLength':30000}})})
+    'workflow.run':obj({'template':{'type':'string','enum':['pdf_preview','word_report']},'inputs':obj({'title':{'type':'string','minLength':1,'maxLength':100},'body':{'type':'string','maxLength':30000}})})
 }
 
 class HostAdapter:
@@ -41,6 +41,7 @@ class HostAdapter:
         self.delegate=delegate; self.store=store; self.knowledge=knowledge
         self.workspace=pathlib.Path(workspace); self.soffice=soffice; self.cancel=cancel
         self.input_bytes=None
+        self.allowed_workflow_tools=None
         self.design=None
 
     def call(self,name,args,previous=None):
@@ -59,7 +60,11 @@ class HostAdapter:
             return {'ok':True,'result':inspect(self.workspace,args['path'],name.split('.')[1])}
         if name=='workflow.run':
             from workflow import run
-            from workflow_templates import get_template
+            from workflow_templates import get_template,required_tools
+            if self.allowed_workflow_tools is not None and not required_tools(args['template'])<=self.allowed_workflow_tools:
+                raise PermissionError('Workflow requires unavailable or denied capabilities')
+            if args['template']=='word_report' and len(args['inputs']['body'])>4000:
+                raise ValueError('Word report body exceeds 4000 characters')
             result=run(self.delegate,get_template(args['template']),args['inputs'],cancel=self.cancel)
             return {'ok':result['status']=='passed','result':result}
         if name=='office.preview':

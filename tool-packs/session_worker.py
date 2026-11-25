@@ -79,6 +79,7 @@ class Session:
         host=KnowledgeHost(self._research,self._knowledge)
         self._adapter=HostAdapter(host,self._store,self._knowledge,self.workspace,self.soffice,cancel)
         self._adapter.research=self._research
+        self._adapter.allowed_workflow_tools=self.allowed
         baseline=snapshot()
         self._policy=PolicyHost(self._adapter,self.allowed,review_required=self.allowed,integrity_check=lambda:verify(baseline))
         return self._policy
@@ -94,7 +95,10 @@ class Session:
             allowed=self.allowed if request.get('internet_enabled') else self.allowed-{'web.fetch'}
             if not self.soffice: allowed=allowed-{'office.preview','document.add_cover'}
             selected=discover(request['query'],set(allowed),limit=request.get('limit',6),budget_bytes=request.get('budget_bytes',6000))
-            workflows={'pdf_preview'} if 'workflow.run' in allowed else set()
+            from workflow_templates import TEMPLATES,required_tools
+            from discovery import catalog,missing
+            entries=catalog()
+            workflows={name for name in TEMPLATES if 'workflow.run' in allowed and required_tools(name)<=allowed and all(not missing(entries[t]['dependencies']) for t in required_tools(name))}
             return {'tools':selected,'workflows':match_workflows(request['query'],workflows)}
         if action=='status':
             from discovery import catalog,missing

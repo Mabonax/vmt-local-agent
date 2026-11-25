@@ -55,7 +55,7 @@ ALIASES={
  "artifact.list":"list stored documents artifacts files",
  "artifact.metadata":"artifact file metadata version reference"
 }
-WORKFLOWS={"pdf_preview":"create generate pdf report document preview render verify validation"}
+WORKFLOWS={"pdf_preview":"create generate pdf report document preview render verify validation","word_report":"create generate word docx report document verify validation"}
 
 def obj(properties):
     return {"type":"object","properties":properties,"required":list(properties),"additionalProperties":False}
@@ -137,4 +137,6 @@ def match_workflows(query,allowed_workflows):
     if type(query) is not str or len(query)>4000 or not isinstance(allowed_workflows,(set,frozenset)): raise ValueError("Invalid workflow discovery")
     terms=tokens(query)
     # Require explicit PDF intent plus production or preview intent.
-    return [name for name in WORKFLOWS if name in allowed_workflows and "pdf" in terms and terms & {"create","generate","preview","render","produce"}]
+    if not terms & {"create","generate","preview","render","produce","write"}: return []
+    return [name for name in WORKFLOWS if name in allowed_workflows and
+            (("pdf" in terms) if name=="pdf_preview" else bool(terms & {"word","docx"}))]

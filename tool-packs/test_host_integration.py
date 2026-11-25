@@ -54,6 +54,26 @@ class HostIntegration(unittest.TestCase):
         buf=io.BytesIO();doc.save(buf)
         with self.assertRaises(ValueError):replace_text(buf.getvalue(),'Budget','Total',1)
 
+    def test_word_workflow_and_child_allowlist(self):
+        with tempfile.TemporaryDirectory() as folder:
+            allowed=['workflow.run','office.docx','artifact.inspect','artifact.hash']
+            args={'state_directory':folder,'workspace':folder,'collection':'default','allowed':allowed,'soffice':None}
+            request={'tool':'workflow.run','arguments':{'template':'word_report','inputs':{'title':'Report','body':'Supplied facts only'}}}
+            session=Session(args)
+            try:
+                self.assertIn('word_report',session.request({'action':'discover','query':'create Word report'})['workflows'])
+                token=session.request({'action':'approve',**request})['approval']
+                result=session.request({'action':'call',**request,'approval':token})
+                self.assertTrue(result['ok'])
+                self.assertEqual(result['result']['outputs']['document']['extension'],'docx')
+            finally:session.close()
+            session=Session({**args,'allowed':['workflow.run']})
+            try:
+                token=session.request({'action':'approve',**request})['approval']
+                with self.assertRaises(PermissionError):
+                    session.request({'action':'call',**request,'approval':token})
+            finally:session.close()
+
     def test_generated_catalog_matches_reviewed_source(self):
         path=pathlib.Path(__file__).parent/'host-catalog.json'
         self.assertEqual(json.loads(path.read_text()),{name:item['definition'] for name,item in catalog().items()})

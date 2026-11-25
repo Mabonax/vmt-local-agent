@@ -1316,7 +1316,8 @@
         "template": {
           "type": "string",
           "enum": [
-            "pdf_preview"
+            "pdf_preview",
+            "word_report"
           ]
         },
         "inputs": {
