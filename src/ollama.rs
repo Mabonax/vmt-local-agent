@@ -663,11 +663,9 @@ fn model_turn_request(
                 let name = call["function"]["name"]
                     .as_str()
                     .context("Tool call has no name")?;
-                let mut args = call["function"]["arguments"].clone();
-                if let Some(text) = args.as_str() {
-                    args = serde_json::from_str(text)?;
-                }
-                ensure!(args.is_object(), "Tool arguments must be an object");
+                let args = crate::tool_recovery::object_arguments(
+                    call["function"]["arguments"].clone(),
+                )?;
                 Ok(Action {
                     kind: "tool".into(),
                     message: String::new(),
@@ -696,7 +694,7 @@ pub fn parse_action(text: &str) -> Result<Action> {
         .trim()
         .trim_end_matches("```")
         .trim();
-    let action: Action = serde_json::from_str(text).context(
+    let mut action: Action = serde_json::from_str(text).context(
         "The model did not return a valid action. Try a coding model or a more specific request.",
     )?;
     ensure!(
@@ -710,6 +708,7 @@ pub fn parse_action(text: &str) -> Result<Action> {
         );
     }
     if action.kind == "tool" {
+        crate::tool_recovery::normalize(&mut action)?;
         ensure!(
             !action.tool.is_empty() && action.args.is_object(),
             "The model returned an incomplete tool action"

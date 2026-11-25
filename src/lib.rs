@@ -21,6 +21,7 @@ pub mod task_journal;
 pub mod task_permissions;
 pub mod task_verification;
 pub mod tool_packs;
+pub mod tool_recovery;
 pub mod tools;
 pub mod types;
 pub mod unified_trial;

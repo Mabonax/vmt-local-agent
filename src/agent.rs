@@ -374,8 +374,7 @@ fn run_inner(
             })?
         ));
     }
-    let competency_guidance =
-        crate::competencies::guidance(user_request, pack_discovery.as_ref());
+    let competency_guidance = crate::competencies::guidance(user_request, pack_discovery.as_ref());
     if !competency_guidance.is_empty() {
         messages[0]["content"] = json!(format!(
             "{}\n{}",
@@ -613,14 +612,12 @@ fn run_inner(
             if assessment.missing_tool_evidence {
                 if step >= 2 {
                     bail!(
-                        "The model returned a completion claim without inspecting the project. No actions were executed. Try a more specific task or another coding model."
+                        "The model returned a completion claim without required tool evidence. No actions were executed. Try a more specific task or another model."
                     );
                 }
-                let correction = if native {
-                    "Runtime correction: NO TOOLS HAVE BEEN EXECUTED. The project has not been inspected or changed. Call read_file, list_files, or search_text now using the actual provided function tools. Do not pretend to execute them."
-                } else {
-                    "Runtime correction: NO TOOLS HAVE BEEN EXECUTED. The project has not been inspected or changed. Your next JSON response MUST have kind tool and call read_file, list_files, or search_text. Do not claim completion."
-                };
+                let document_task =
+                    !crate::task_verification::requested_artifacts(user_request).is_empty();
+                let correction = crate::tool_recovery::no_execution_guidance(document_task);
                 messages.push(json!({"role":"user","content":correction}));
                 continue;
             }

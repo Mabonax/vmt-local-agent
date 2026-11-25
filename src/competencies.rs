@@ -105,12 +105,18 @@ pub fn guidance(request: &str, discovery: Option<&Value>) -> String {
                 .copied()
                 .filter(|name| available.contains(name))
                 .collect();
+            let remaining: Vec<_> = entry
+                .tools
+                .iter()
+                .copied()
+                .filter(|name| !available.contains(name))
+                .collect();
             format!(
                 "{}: skill {}; discovered now: {}; candidates requiring discovery: {}; checks: {}; limits: {}",
                 entry.id,
                 entry.skill,
                 present.join(", "),
-                entry.tools.join(", "),
+                remaining.join(", "),
                 entry.verification,
                 entry.limitation
             )
