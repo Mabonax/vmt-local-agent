@@ -28,3 +28,9 @@ descendants. MCP and creative runtimes need additional isolation work.
   artifact hashes and acceptance outcomes without private source contents.
 
 Do not claim real-model acceptance or production readiness from unit tests.
+
+Research evidence now persists per private workspace collection after reviewed
+web retrieval. Source IDs, offsets, timestamps and text hashes survive worker
+restart. Snapshots are bounded plaintext, not encrypted or independently
+verified; existing session writer leases coordinate writes. No retention UI,
+source deletion, authenticity guarantee or hybrid semantic retrieval yet.

@@ -21,9 +21,8 @@ impl ModelProfile {
             "This model is not a local weights model. Cloud runtimes are disabled."
         );
         let caps = info["capabilities"].as_array();
-        let has = |name: &str| {
-            caps.is_some_and(|items| items.iter().any(|c| c.as_str() == Some(name)))
-        };
+        let has =
+            |name: &str| caps.is_some_and(|items| items.iter().any(|c| c.as_str() == Some(name)));
         ensure!(
             has("completion"),
             "Select a chat/completion model rather than an embedding model"

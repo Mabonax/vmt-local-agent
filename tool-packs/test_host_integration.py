@@ -78,6 +78,21 @@ class HostIntegration(unittest.TestCase):
         path=pathlib.Path(__file__).parent/'host-catalog.json'
         self.assertEqual(json.loads(path.read_text()),{name:item['definition'] for name,item in catalog().items()})
 
+    def test_research_evidence_persists_and_rejects_tampering(self):
+        from evidence import EvidenceStore
+        with tempfile.TemporaryDirectory() as folder:
+            store=EvidenceStore(folder)
+            result={'url':'https://example.com/','title':'Example','text':'Budget 375000.','sha256':'a'*64,'truncated':False}
+            first=store.register_fetch(result)
+            restored=EvidenceStore(folder)
+            self.assertEqual(restored.register_fetch(result)['source_id'],first['source_id'])
+            self.assertEqual(restored.citation(first['source_id'],0,14)['excerpt'],'Budget 375000.')
+            self.assertEqual(restored.find('Budget',1)[0]['source_id'],first['source_id'])
+            path=pathlib.Path(folder)/'research-evidence.json'
+            rows=json.loads(path.read_text(encoding='utf-8'));rows[0]['text']='Changed'
+            path.write_text(json.dumps(rows),encoding='utf-8')
+            with self.assertRaises(ValueError):EvidenceStore(folder)
+
     def test_knowledge_source_revisions_survive_reopen(self):
         from knowledge import KnowledgeStore
         with tempfile.TemporaryDirectory() as folder:

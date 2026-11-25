@@ -646,9 +646,8 @@ fn model_turn_request(
                 let name = call["function"]["name"]
                     .as_str()
                     .context("Tool call has no name")?;
-                let args = crate::tool_recovery::object_arguments(
-                    call["function"]["arguments"].clone(),
-                )?;
+                let args =
+                    crate::tool_recovery::object_arguments(call["function"]["arguments"].clone())?;
                 Ok(Action {
                     kind: "tool".into(),
                     message: String::new(),

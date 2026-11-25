@@ -6,8 +6,9 @@ use serde_json::{Value, json};
 /// Decode an object or one JSON-encoded object. No recursive coercion.
 pub fn object_arguments(value: Value) -> Result<Value> {
     let value = match value {
-        Value::String(text) => serde_json::from_str(&text)
-            .context("Tool arguments must be a valid JSON object")?,
+        Value::String(text) => {
+            serde_json::from_str(&text).context("Tool arguments must be a valid JSON object")?
+        }
         other => other,
     };
     ensure!(value.is_object(), "Tool arguments must be an object");

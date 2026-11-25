@@ -75,7 +75,8 @@ class Session:
         self._knowledge=KnowledgeStore(collection)
         host=ArtifactHost(self._store,cancel)
         host=SystemHost(host,self.workspace)
-        self._research=ResearchHost(host,set())
+        from evidence import EvidenceStore
+        self._research=ResearchHost(host,set(),EvidenceStore(collection))
         host=KnowledgeHost(self._research,self._knowledge)
         self._adapter=HostAdapter(host,self._store,self._knowledge,self.workspace,self.soffice,cancel)
         self._adapter.research=self._research
