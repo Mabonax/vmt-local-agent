@@ -417,6 +417,14 @@ fn run_inner(
         contract.guidance()
     ));
     let mut evidence = crate::factual_evidence::EvidenceRegister::new(user_request);
+    // Strict mode is explicit opt-in. Do not silently change ordinary reports.
+    let strict_evidence_report = user_request.to_lowercase().starts_with("evidence-only report:");
+    if strict_evidence_report {
+        messages[0]["content"] = json!(format!(
+            "{}\nEvidence-only report mode: use tools to retrieve exact citations as needed. Your final message must be a JSON array of integer evidence IDs, not prose. The host renders the cited excerpts. This mode returns text only; do not create or modify artifacts.",
+            messages[0]["content"].as_str().unwrap_or("")
+        ));
+    }
     let mut tool_count = 0;
     let mut file_changes = 0;
     let mut commands = 0;
@@ -506,6 +514,22 @@ fn run_inner(
                 .pop_front()
                 .context("The model returned no action")?
         };
+        if strict_evidence_report && action.kind == "tool" {
+            let canonical = crate::tool_packs::canonical(&action.tool).or_else(|| {
+                (action.tool == "tool_pack_call")
+                    .then(|| action.args["tool"].as_str().unwrap_or("").to_owned())
+            });
+            let allowed = matches!(
+                action.tool.as_str(),
+                "discover_tools" | "tool_schema"
+            ) || matches!(
+                canonical.as_deref(),
+                Some("math.calculate" | "knowledge.search" | "knowledge.citation" | "research.find" | "research.citation" | "research.sources" | "knowledge.documents")
+            );
+            if !allowed {
+                bail!("Evidence-only report mode permits only discovery, retrieval and calculation. No rejected action was executed.");
+            }
+        }
         if action.kind == "tool" {
             let signature = format!("{}:{}", action.tool, serde_json::to_string(&action.args)?);
             if failed_signatures.get(&signature).copied().unwrap_or(0) >= 2 {
@@ -524,8 +548,26 @@ fn run_inner(
             }
         }
         if action.kind == "final" {
-            let assessment =
-                contract.assess(&created_artifacts, &formatted_documents, tool_count);
+            if strict_evidence_report {
+                let report = serde_json::from_str::<Vec<usize>>(&action.message)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|ids| evidence.render_report(&ids));
+                match report {
+                    Ok(report) => {
+                        journal.finish("completed")?;
+                        let _ = tx.send(Event::Final(report));
+                        ctx.request_repaint();
+                        return Ok(());
+                    }
+                    Err(_) if corrections < 2 => {
+                        corrections += 1;
+                        messages.push(json!({"role":"user","content":format!("Return only a JSON array of existing unique evidence IDs as your final message. {}", evidence.context())}));
+                        continue;
+                    }
+                    Err(_) => bail!("Evidence-only report incomplete: invalid evidence selection."),
+                }
+            }
+            let assessment = contract.assess(&created_artifacts, &formatted_documents, tool_count);
             let missing = &assessment.missing_artifacts;
             if !missing.is_empty() && corrections < 2 {
                 corrections += 1;
@@ -826,7 +868,7 @@ fn run_inner(
         }));
         ctx.request_repaint();
         let evidence_context = evidence.context();
-        let model_output = format!("{}\n\n{}", clip(&output, 6000), evidence_context);
+        let model_output = format!("{}\n\n{}", clip(&output, 8000), evidence_context);
         if native {
             messages.push(
                 json!({"role":"tool","tool_name":action.tool,"content":clip(&model_output,12_000)}),

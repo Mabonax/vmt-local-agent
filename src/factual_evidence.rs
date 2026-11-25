@@ -39,7 +39,8 @@ impl EvidenceRegister {
         }
         if self.records.len() >= MAX_RECORDS {
             // Keep the original user request; evict the oldest retrieved record.
-            self.records.remove(1);
+            let index = usize::from(self.records.front().is_some_and(|r| r.origin == "user_request"));
+            self.records.remove(index);
         }
         self.records.push_back(Record {
             id: self.next_id,
@@ -89,6 +90,32 @@ impl EvidenceRegister {
         }
     }
 
+    /// Render exact evidence excerpts, never model-authored factual prose.
+    /// A valid reference establishes provenance, not semantic truth.
+    pub fn render_report(&self, ids: &[usize]) -> anyhow::Result<String> {
+        anyhow::ensure!(!ids.is_empty() && ids.len() <= MAX_RECORDS, "Select 1–16 evidence IDs");
+        let mut seen = std::collections::BTreeSet::new();
+        let mut sections = Vec::new();
+        for id in ids {
+            anyhow::ensure!(seen.insert(*id), "Duplicate evidence ID");
+            let record = self
+                .records
+                .iter()
+                .find(|r| r.id == *id)
+                .ok_or_else(|| anyhow::anyhow!("Unknown or expired evidence ID"))?;
+            let label = match record.origin {
+                "user_request" => "User-supplied information (not independently verified)",
+                "calculation" => "Tool-returned calculation (inputs not independently verified)",
+                _ => "Retrieved excerpt (source accuracy not independently verified)",
+            };
+            sections.push(format!(
+                "[{}] {} — {}\n{}",
+                record.id, label, record.reference, record.excerpt
+            ));
+        }
+        Ok(sections.join("\n\n"))
+    }
+
     /// Data-only prompt fragment. Retrieved content remains untrusted.
     pub fn context(&self) -> String {
         let rows: Vec<_> = self
@@ -132,6 +159,17 @@ mod tests {
         assert!(context.contains("42"));
         assert!(!context.contains("Invented achievement"));
         assert!(!context.contains("999"));
+    }
+
+    #[test]
+    fn report_uses_only_existing_exact_excerpts() {
+        let register = EvidenceRegister::new("Budget R375000.");
+        let report = register.render_report(&[1]).unwrap();
+        assert!(report.contains("Budget R375000."));
+        assert!(report.contains("not independently verified"));
+        assert!(register.render_report(&[2]).is_err());
+        assert!(register.render_report(&[1, 1]).is_err());
+        assert!(register.render_report(&[]).is_err());
     }
 
     #[test]

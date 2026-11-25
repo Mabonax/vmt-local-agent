@@ -19,9 +19,7 @@ pub struct Assessment {
 
 impl Assessment {
     pub fn complete(&self) -> bool {
-        self.missing_artifacts.is_empty()
-            && !self.missing_formatter
-            && !self.missing_tool_evidence
+        self.missing_artifacts.is_empty() && !self.missing_formatter && !self.missing_tool_evidence
     }
 }
 
@@ -57,7 +55,11 @@ impl TaskContract {
             .join(", ");
         format!(
             "Runtime task contract (conservative inferred requirements, not permissions): required new outputs: {}; existing DOCX formatting evidence required: {}; tool evidence required: {}. Preserve the original request and source documents. Distinguish supplied facts from proposals and unknowns. Never invent completed work. Preview derivatives do not count as deliverables. Content accuracy and visual quality need separate verification.",
-            if outputs.is_empty() { "none inferred" } else { &outputs },
+            if outputs.is_empty() {
+                "none inferred"
+            } else {
+                &outputs
+            },
             self.requires_formatter,
             self.requires_tools,
         )
