@@ -41,6 +41,7 @@ ALIASES={
  "artifact.inspect":"validate file integrity structure document office pdf",
  "artifact.hash":"checksum fingerprint hash integrity",
  "data.describe":"statistics average mean median numerical analysis",
+ "finance.check_total":"budget finance financial currency money total reconcile decimal sum verify arithmetic",
  "math.calculate":"arithmetic calculate calculator sum multiply divide",
  "code.dependencies":"dependencies libraries packages npm composer cargo",
  "project.detect":"repository framework language project technology",

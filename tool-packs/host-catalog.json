@@ -1,30 +1,166 @@
 {
-  "math.calculate": {
-    "name": "math.calculate",
-    "description": "Basic arithmetic",
+  "artifact.compare": {
+    "name": "artifact.compare",
+    "description": "artifact compare using host-owned workspace, reviewed input snapshots or a fixed workflow",
     "input_schema": {
       "type": "object",
       "properties": {
-        "operation": {
+        "first_id": {
           "type": "string",
-          "enum": [
-            "add",
-            "subtract",
-            "multiply",
-            "divide"
-          ]
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
         },
-        "a": {
-          "type": "number"
-        },
-        "b": {
-          "type": "number"
+        "second_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
         }
       },
       "required": [
-        "operation",
-        "a",
-        "b"
+        "first_id",
+        "second_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "artifact.hash": {
+    "name": "artifact.hash",
+    "description": "Hash decoded artifact bytes",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "artifact.import": {
+    "name": "artifact.import",
+    "description": "artifact import using host-owned workspace, reviewed input snapshots or a fixed workflow",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "artifact.inspect": {
+    "name": "artifact.inspect",
+    "description": "Inspect PDF or Office container structure",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "artifact.list": {
+    "name": "artifact.list",
+    "description": "list stored documents artifacts files",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "artifact.metadata": {
+    "name": "artifact.metadata",
+    "description": "artifact file metadata version reference",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "code.dependencies": {
+    "name": "code.dependencies",
+    "description": "Extract top-level declared dependencies",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "npm",
+            "composer",
+            "cargo"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "format",
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "code.metrics": {
+    "name": "code.metrics",
+    "description": "Count physical source lines and characters",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "csv.profile": {
+    "name": "csv.profile",
+    "description": "Profile CSV rows and missing cells",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "text"
       ],
       "additionalProperties": false
     }
@@ -46,23 +182,6 @@
       },
       "required": [
         "values"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "text.inspect": {
-    "name": "text.inspect",
-    "description": "Text counts",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "text"
       ],
       "additionalProperties": false
     }
@@ -105,118 +224,6 @@
       "additionalProperties": false
     }
   },
-  "text.sha256": {
-    "name": "text.sha256",
-    "description": "Hash UTF-8 text",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "text.diff": {
-    "name": "text.diff",
-    "description": "Compare text lines",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "before": {
-          "type": "string",
-          "maxLength": 100000
-        },
-        "after": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "before",
-        "after"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "csv.profile": {
-    "name": "csv.profile",
-    "description": "Profile CSV rows and missing cells",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "python.symbols": {
-    "name": "python.symbols",
-    "description": "Parse Python symbols without executing code",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "text.find": {
-    "name": "text.find",
-    "description": "Case-insensitive literal text search",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        },
-        "query": {
-          "type": "string",
-          "maxLength": 300
-        }
-      },
-      "required": [
-        "text",
-        "query"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "document.outline": {
-    "name": "document.outline",
-    "description": "Extract Markdown headings and flag skipped levels",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
-    }
-  },
   "design.contrast": {
     "name": "design.contrast",
     "description": "Calculate WCAG contrast thresholds",
@@ -235,6 +242,30 @@
       "required": [
         "foreground",
         "background"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "document.add_cover": {
+    "name": "document.add_cover",
+    "description": "Add one cover to an existing DOCX, preserve the original CV, render all pages, register artifacts and save a NEW workspace DOCX in one exact review. Uses existing identity/placeholders; no rewritten CV or invented facts.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "path",
+        "output"
       ],
       "additionalProperties": false
     }
@@ -280,30 +311,9 @@
       "additionalProperties": false
     }
   },
-  "project.detect": {
-    "name": "project.detect",
-    "description": "Detect project markers from supplied paths",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "paths": {
-          "type": "array",
-          "maxItems": 2000,
-          "items": {
-            "type": "string",
-            "maxLength": 500
-          }
-        }
-      },
-      "required": [
-        "paths"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "code.metrics": {
-    "name": "code.metrics",
-    "description": "Count physical source lines and characters",
+  "document.outline": {
+    "name": "document.outline",
+    "description": "Extract Markdown headings and flag skipped levels",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -318,287 +328,70 @@
       "additionalProperties": false
     }
   },
-  "code.dependencies": {
-    "name": "code.dependencies",
-    "description": "Extract top-level declared dependencies",
+  "finance.check_total": {
+    "name": "finance.check_total",
+    "description": "Check exact decimal monetary total of signed line amounts in a single currency; inputs are not verified facts",
     "input_schema": {
       "type": "object",
       "properties": {
-        "format": {
+        "currency": {
           "type": "string",
           "enum": [
-            "npm",
-            "composer",
-            "cargo"
+            "ZAR",
+            "USD",
+            "EUR",
+            "GBP"
           ]
         },
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "format",
-        "text"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "python.imports": {
-    "name": "python.imports",
-    "description": "Extract Python imports without execution",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "maxLength": 100000
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "office.docx": {
-    "name": "office.docx",
-    "description": "Generate editable Word document",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string",
-          "maxLength": 150
-        },
-        "sections": {
-          "type": "array",
-          "maxItems": 30,
-          "items": {
-            "type": "object",
-            "properties": {
-              "heading": {
-                "type": "string",
-                "maxLength": 150
-              },
-              "body": {
-                "type": "string",
-                "maxLength": 4000
-              }
-            },
-            "required": [
-              "heading",
-              "body"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      "required": [
-        "title",
-        "sections"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "office.xlsx": {
-    "name": "office.xlsx",
-    "description": "Generate editable workbook with literal cells",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "headers": {
+        "amounts": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 30,
+          "maxItems": 100,
           "items": {
             "type": "string",
-            "maxLength": 100
-          }
-        },
-        "rows": {
-          "type": "array",
-          "maxItems": 1000,
-          "items": {
-            "type": "array",
-            "maxItems": 30,
-            "items": {
-              "type": "scalar"
-            }
-          }
-        }
-      },
-      "required": [
-        "headers",
-        "rows"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "office.pptx": {
-    "name": "office.pptx",
-    "description": "Generate editable widescreen presentation",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "slides": {
-          "type": "array",
-          "maxItems": 20,
-          "items": {
-            "type": "object",
-            "properties": {
-              "heading": {
-                "type": "string",
-                "maxLength": 80
-              },
-              "body": {
-                "type": "string",
-                "maxLength": 400
-              }
-            },
-            "required": [
-              "heading",
-              "body"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      "required": [
-        "title",
-        "slides"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "pdf.generate": {
-    "name": "pdf.generate",
-    "description": "Generate paginated PDF from Latin-1 text",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "body": {
-          "type": "string",
-          "maxLength": 30000
-        }
-      },
-      "required": [
-        "title",
-        "body"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "pdf.inspect": {
-    "name": "pdf.inspect",
-    "description": "Inspect PDF page dimensions and rotation",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        }
-      },
-      "required": [
-        "artifact_id"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "pdf.extract_text": {
-    "name": "pdf.extract_text",
-    "description": "Extract embedded text from selected pages",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "pages": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 50,
-          "items": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 50
-          }
-        },
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        }
-      },
-      "required": [
-        "artifact_id",
-        "pages"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "pdf.split": {
-    "name": "pdf.split",
-    "description": "Create PDF from selected pages",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "pages": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 50,
-          "items": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 50
-          }
-        },
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        }
-      },
-      "required": [
-        "artifact_id",
-        "pages"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "pdf.merge": {
-    "name": "pdf.merge",
-    "description": "Combine PDF pages",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "artifact_ids": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 5,
-          "items": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{32}$",
             "maxLength": 32
           }
+        },
+        "claimed_total": {
+          "type": "string",
+          "maxLength": 32
         }
       },
       "required": [
-        "artifact_ids"
+        "currency",
+        "amounts",
+        "claimed_total"
       ],
       "additionalProperties": false
     }
   },
-  "artifact.hash": {
-    "name": "artifact.hash",
-    "description": "Hash decoded artifact bytes",
+  "image.compare": {
+    "name": "image.compare",
+    "description": "Compare equal-size raster images",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "first_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        },
+        "second_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "first_id",
+        "second_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "image.inspect": {
+    "name": "image.inspect",
+    "description": "Measure raster dimensions and nonwhite bounds",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -614,21 +407,114 @@
       "additionalProperties": false
     }
   },
-  "artifact.inspect": {
-    "name": "artifact.inspect",
-    "description": "Inspect PDF or Office container structure",
+  "knowledge.citation": {
+    "name": "knowledge.citation",
+    "description": "Retrieve exact passage from indexed document",
     "input_schema": {
       "type": "object",
       "properties": {
-        "artifact_id": {
+        "document_id": {
           "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
         }
       },
       "required": [
-        "artifact_id"
+        "document_id",
+        "start",
+        "end"
       ],
+      "additionalProperties": false
+    }
+  },
+  "knowledge.documents": {
+    "name": "knowledge.documents",
+    "description": "List indexed local documents and revisions",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 500
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "offset",
+        "limit"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "knowledge.ingest": {
+    "name": "knowledge.ingest",
+    "description": "knowledge ingest using host-owned workspace, reviewed input snapshots or a fixed workflow",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "path",
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "knowledge.search": {
+    "name": "knowledge.search",
+    "description": "Search local documents policies manuals and knowledge passages",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "query",
+        "limit"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "knowledge.statistics": {
+    "name": "knowledge.statistics",
+    "description": "Inspect local knowledge index statistics",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
       "additionalProperties": false
     }
   },
@@ -740,153 +626,33 @@
       "additionalProperties": false
     }
   },
-  "pdf.render": {
-    "name": "pdf.render",
-    "description": "Render a single PDF page as PNG",
+  "math.calculate": {
+    "name": "math.calculate",
+    "description": "Basic arithmetic",
     "input_schema": {
       "type": "object",
       "properties": {
-        "page": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50
+        "operation": {
+          "type": "string",
+          "enum": [
+            "add",
+            "subtract",
+            "multiply",
+            "divide"
+          ]
         },
-        "dpi": {
-          "type": "integer",
-          "minimum": 36,
-          "maximum": 144
+        "a": {
+          "type": "number"
         },
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
+        "b": {
+          "type": "number"
         }
       },
       "required": [
-        "artifact_id",
-        "page",
-        "dpi"
+        "operation",
+        "a",
+        "b"
       ],
-      "additionalProperties": false
-    }
-  },
-  "image.inspect": {
-    "name": "image.inspect",
-    "description": "Measure raster dimensions and nonwhite bounds",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        }
-      },
-      "required": [
-        "artifact_id"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "image.compare": {
-    "name": "image.compare",
-    "description": "Compare equal-size raster images",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "first_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        },
-        "second_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        }
-      },
-      "required": [
-        "first_id",
-        "second_id"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "artifact.list": {
-    "name": "artifact.list",
-    "description": "list stored documents artifacts files",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    }
-  },
-  "artifact.metadata": {
-    "name": "artifact.metadata",
-    "description": "artifact file metadata version reference",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
-        }
-      },
-      "required": [
-        "artifact_id"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "system.info": {
-    "name": "system.info",
-    "description": "system info read-only diagnostics or model memory estimate",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    }
-  },
-  "system.cpu": {
-    "name": "system.cpu",
-    "description": "system cpu read-only diagnostics or model memory estimate",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    }
-  },
-  "system.memory": {
-    "name": "system.memory",
-    "description": "system memory read-only diagnostics or model memory estimate",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    }
-  },
-  "system.storage": {
-    "name": "system.storage",
-    "description": "system storage read-only diagnostics or model memory estimate",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    }
-  },
-  "system.dependencies": {
-    "name": "system.dependencies",
-    "description": "system dependencies read-only diagnostics or model memory estimate",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
       "additionalProperties": false
     }
   },
@@ -938,74 +704,340 @@
       "additionalProperties": false
     }
   },
-  "web.fetch": {
-    "name": "web.fetch",
-    "description": "Reviewed HTTPS webpage retrieval",
+  "office.docx": {
+    "name": "office.docx",
+    "description": "Generate editable Word document",
     "input_schema": {
       "type": "object",
       "properties": {
-        "url": {
+        "title": {
           "type": "string",
-          "maxLength": 2048
+          "maxLength": 150
+        },
+        "sections": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 150
+              },
+              "body": {
+                "type": "string",
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "heading",
+              "body"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
-        "url"
+        "title",
+        "sections"
       ],
       "additionalProperties": false
     }
   },
-  "web.extract": {
-    "name": "web.extract",
-    "description": "Offline HTML text and link extraction",
+  "office.pptx": {
+    "name": "office.pptx",
+    "description": "Generate editable widescreen presentation",
     "input_schema": {
       "type": "object",
       "properties": {
-        "html": {
+        "title": {
           "type": "string",
-          "maxLength": 200000
+          "maxLength": 100
         },
-        "url": {
-          "type": "string",
-          "maxLength": 2048
+        "slides": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "heading": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "body": {
+                "type": "string",
+                "maxLength": 400
+              }
+            },
+            "required": [
+              "heading",
+              "body"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
-        "html",
-        "url"
+        "title",
+        "slides"
       ],
       "additionalProperties": false
     }
   },
-  "research.sources": {
-    "name": "research.sources",
-    "description": "List collected research source metadata",
-    "input_schema": {
-      "type": "object",
-      "properties": {},
-      "required": [],
-      "additionalProperties": false
-    }
-  },
-  "research.find": {
-    "name": "research.find",
-    "description": "Search collected evidence for relevant passages",
+  "office.preview": {
+    "name": "office.preview",
+    "description": "office preview using host-owned workspace, reviewed input snapshots or a fixed workflow",
     "input_schema": {
       "type": "object",
       "properties": {
-        "query": {
+        "artifact_id": {
           "type": "string",
-          "maxLength": 300
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "office.xlsx": {
+    "name": "office.xlsx",
+    "description": "Generate editable workbook with literal cells",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "headers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          }
         },
-        "limit": {
+        "rows": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "scalar"
+            }
+          }
+        }
+      },
+      "required": [
+        "headers",
+        "rows"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "pdf.extract_text": {
+    "name": "pdf.extract_text",
+    "description": "Extract embedded text from selected pages",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id",
+        "pages"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "pdf.generate": {
+    "name": "pdf.generate",
+    "description": "Generate paginated PDF from Latin-1 text",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 30000
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "pdf.inspect": {
+    "name": "pdf.inspect",
+    "description": "Inspect PDF page dimensions and rotation",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "pdf.merge": {
+    "name": "pdf.merge",
+    "description": "Combine PDF pages",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "artifact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "maxLength": 32
+          }
+        }
+      },
+      "required": [
+        "artifact_ids"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "pdf.render": {
+    "name": "pdf.render",
+    "description": "Render a single PDF page as PNG",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "page": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 20
+          "maximum": 50
+        },
+        "dpi": {
+          "type": "integer",
+          "minimum": 36,
+          "maximum": 144
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
         }
       },
       "required": [
-        "query",
-        "limit"
+        "artifact_id",
+        "page",
+        "dpi"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "pdf.split": {
+    "name": "pdf.split",
+    "description": "Create PDF from selected pages",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "artifact_id",
+        "pages"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "project.detect": {
+    "name": "project.detect",
+    "description": "Detect project markers from supplied paths",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "python.imports": {
+    "name": "python.imports",
+    "description": "Extract Python imports without execution",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "python.symbols": {
+    "name": "python.symbols",
+    "description": "Parse Python symbols without executing code",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "text"
       ],
       "additionalProperties": false
     }
@@ -1040,9 +1072,9 @@
       "additionalProperties": false
     }
   },
-  "knowledge.search": {
-    "name": "knowledge.search",
-    "description": "Search local documents policies manuals and knowledge passages",
+  "research.find": {
+    "name": "research.find",
+    "description": "Search collected evidence for relevant passages",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -1063,63 +1095,9 @@
       "additionalProperties": false
     }
   },
-  "knowledge.documents": {
-    "name": "knowledge.documents",
-    "description": "List indexed local documents and revisions",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 500
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50
-        }
-      },
-      "required": [
-        "offset",
-        "limit"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "knowledge.citation": {
-    "name": "knowledge.citation",
-    "description": "Retrieve exact passage from indexed document",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "document_id": {
-          "type": "string",
-          "maxLength": 32,
-          "pattern": "^[0-9a-f]{32}$"
-        },
-        "start": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 100000
-        },
-        "end": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100000
-        }
-      },
-      "required": [
-        "document_id",
-        "start",
-        "end"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "knowledge.statistics": {
-    "name": "knowledge.statistics",
-    "description": "Inspect local knowledge index statistics",
+  "research.sources": {
+    "name": "research.sources",
+    "description": "List collected research source metadata",
     "input_schema": {
       "type": "object",
       "properties": {},
@@ -1127,164 +1105,169 @@
       "additionalProperties": false
     }
   },
-  "document.add_cover": {
-    "name": "document.add_cover",
-    "description": "Add one cover to an existing DOCX, preserve the original CV, render all pages, register artifacts and save a NEW workspace DOCX in one exact review. Uses existing identity/placeholders; no rewritten CV or invented facts.",
+  "system.cpu": {
+    "name": "system.cpu",
+    "description": "system cpu read-only diagnostics or model memory estimate",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "system.dependencies": {
+    "name": "system.dependencies",
+    "description": "system dependencies read-only diagnostics or model memory estimate",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "system.info": {
+    "name": "system.info",
+    "description": "system info read-only diagnostics or model memory estimate",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "system.memory": {
+    "name": "system.memory",
+    "description": "system memory read-only diagnostics or model memory estimate",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "system.storage": {
+    "name": "system.storage",
+    "description": "system storage read-only diagnostics or model memory estimate",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "text.diff": {
+    "name": "text.diff",
+    "description": "Compare text lines",
     "input_schema": {
       "type": "object",
       "properties": {
-        "path": {
+        "before": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 240
+          "maxLength": 100000
         },
-        "output": {
+        "after": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 240
+          "maxLength": 100000
         }
       },
       "required": [
-        "path",
-        "output"
+        "before",
+        "after"
       ],
       "additionalProperties": false
     }
   },
-  "workspace.metadata": {
-    "name": "workspace.metadata",
-    "description": "workspace metadata using host-owned workspace, reviewed input snapshots or a fixed workflow",
+  "text.find": {
+    "name": "text.find",
+    "description": "Case-insensitive literal text search",
     "input_schema": {
       "type": "object",
       "properties": {
-        "path": {
+        "text": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 240
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "workspace.sha256": {
-    "name": "workspace.sha256",
-    "description": "workspace sha256 using host-owned workspace, reviewed input snapshots or a fixed workflow",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 240
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "workspace.list": {
-    "name": "workspace.list",
-    "description": "workspace list using host-owned workspace, reviewed input snapshots or a fixed workflow",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 240
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "artifact.import": {
-    "name": "artifact.import",
-    "description": "artifact import using host-owned workspace, reviewed input snapshots or a fixed workflow",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 240
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "knowledge.ingest": {
-    "name": "knowledge.ingest",
-    "description": "knowledge ingest using host-owned workspace, reviewed input snapshots or a fixed workflow",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 240
+          "maxLength": 100000
         },
-        "title": {
+        "query": {
           "type": "string",
-          "minLength": 1,
           "maxLength": 300
         }
       },
       "required": [
-        "path",
-        "title"
+        "text",
+        "query"
       ],
       "additionalProperties": false
     }
   },
-  "office.preview": {
-    "name": "office.preview",
-    "description": "office preview using host-owned workspace, reviewed input snapshots or a fixed workflow",
+  "text.inspect": {
+    "name": "text.inspect",
+    "description": "Text counts",
     "input_schema": {
       "type": "object",
       "properties": {
-        "artifact_id": {
+        "text": {
           "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
+          "maxLength": 100000
         }
       },
       "required": [
-        "artifact_id"
+        "text"
       ],
       "additionalProperties": false
     }
   },
-  "artifact.compare": {
-    "name": "artifact.compare",
-    "description": "artifact compare using host-owned workspace, reviewed input snapshots or a fixed workflow",
+  "text.sha256": {
+    "name": "text.sha256",
+    "description": "Hash UTF-8 text",
     "input_schema": {
       "type": "object",
       "properties": {
-        "first_id": {
+        "text": {
           "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "web.extract": {
+    "name": "web.extract",
+    "description": "Offline HTML text and link extraction",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "html": {
+          "type": "string",
+          "maxLength": 200000
         },
-        "second_id": {
+        "url": {
           "type": "string",
-          "pattern": "^[0-9a-f]{32}$",
-          "maxLength": 32
+          "maxLength": 2048
         }
       },
       "required": [
-        "first_id",
-        "second_id"
+        "html",
+        "url"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "web.fetch": {
+    "name": "web.fetch",
+    "description": "Reviewed HTTPS webpage retrieval",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "url"
       ],
       "additionalProperties": false
     }
@@ -1324,6 +1307,60 @@
       "required": [
         "template",
         "inputs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.list": {
+    "name": "workspace.list",
+    "description": "workspace list using host-owned workspace, reviewed input snapshots or a fixed workflow",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.metadata": {
+    "name": "workspace.metadata",
+    "description": "workspace metadata using host-owned workspace, reviewed input snapshots or a fixed workflow",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.sha256": {
+    "name": "workspace.sha256",
+    "description": "workspace sha256 using host-owned workspace, reviewed input snapshots or a fixed workflow",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "path"
       ],
       "additionalProperties": false
     }

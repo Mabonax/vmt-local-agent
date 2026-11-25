@@ -1,6 +1,7 @@
 """Dependency-free, pure computation tools. No filesystem, network or subprocess access."""
 import json
 import math
+import re
 import sys
 from collections import Counter
 
@@ -9,9 +10,29 @@ def number(x):
         raise ValueError("Expected finite number")
     return x
 
+def cents(value):
+    # Canonical decimal strings only; no locale guessing or floating point.
+    if type(value) is not str or len(value)>32 or not re.fullmatch(r"-?(?:0|[1-9][0-9]{0,14})(?:\.[0-9]{1,2})?",value):
+        raise ValueError("Expected signed decimal amount with at most two fractional digits")
+    negative=value.startswith("-")
+    whole,_,fraction=value.lstrip("-").partition(".")
+    result=int(whole)*100+int(fraction.ljust(2,"0"))
+    return -result if negative else result
+
+def monetary(value):
+    return ("-" if value<0 else "")+str(abs(value)//100)+"."+str(abs(value)%100).zfill(2)
+
 def execute(name, args):
     if not isinstance(args, dict):
         raise ValueError("Expected object")
+    if name == "finance.check_total":
+        if set(args)!={"currency","amounts","claimed_total"}: raise ValueError("Unexpected arguments")
+        if args["currency"] not in ("ZAR","USD","EUR","GBP"): raise ValueError("Unsupported currency")
+        amounts=args["amounts"]
+        if type(amounts) is not list or not 1<=len(amounts)<=100: raise ValueError("Invalid line count")
+        total=sum(map(cents,amounts))
+        claimed=cents(args["claimed_total"])
+        return {"currency":args["currency"],"line_count":len(amounts),"computed_total":monetary(total),"claimed_total":monetary(claimed),"difference":monetary(total-claimed),"matches":total==claimed,"limitation":"Arithmetic only; input amounts and currency are not independently verified"}
     if name == "math.calculate":
         if set(args) != {"operation", "a", "b"}:
             raise ValueError("Unexpected arguments")

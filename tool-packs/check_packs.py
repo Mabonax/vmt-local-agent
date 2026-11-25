@@ -20,6 +20,7 @@ EXAMPLES={
  "code.metrics":{"text":"hello"},
  "code.dependencies":{"format":"npm","text":"{}"},
  "python.imports":{"text":"import os"},
+ "finance.check_total":{"currency":"ZAR","amounts":["0.10","0.20"],"claimed_total":"0.30"},
  "math.calculate":{"operation":"add","a":2,"b":3},
  "data.describe":{"values":[1,2,3]},
  "data.frequency":{"values":["a","a"]},

@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn registered_aliases_are_unique_and_host_transport_is_not_a_capability() {
         let entries = catalog();
-        assert_eq!(entries.len(), 58);
+        assert_eq!(entries.len(), 59);
         let aliases: std::collections::BTreeSet<_> =
             entries.keys().map(|name| alias(name)).collect();
         assert_eq!(aliases.len(), entries.len());

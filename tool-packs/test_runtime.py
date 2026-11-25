@@ -6,11 +6,22 @@ import workspace_adapter as ws
 
 class RuntimeTests(unittest.TestCase):
     def test_registry(self):
-        self.assertEqual(len(dispatch.registry()),32)
+        self.assertEqual(len(dispatch.registry()),33)
     def test_dispatch(self):
         self.assertEqual(dispatch.dispatch("math.calculate",{"operation":"add","a":2,"b":3}),{"ok":True,"result":{"value":5}})
         with self.assertRaises(ValueError): dispatch.dispatch("math.calculate",{"operation":"add","a":True,"b":3})
         with self.assertRaises(KeyError): dispatch.dispatch("shell.run",{})
+    def test_exact_financial_totals(self):
+        args={"currency":"ZAR","amounts":["0.10","0.20","-0.01"],"claimed_total":"0.29"}
+        result=dispatch.dispatch("finance.check_total",args)["result"]
+        self.assertTrue(result["matches"])
+        self.assertEqual(result["computed_total"],"0.29")
+        mismatch=dispatch.dispatch("finance.check_total",{**args,"claimed_total":"0.30"})["result"]
+        self.assertFalse(mismatch["matches"])
+        self.assertEqual(mismatch["difference"],"-0.01")
+        for invalid in ["1,000.00","1.001","1e3","NaN","01"]:
+            self.assertFalse(dispatch.dispatch("finance.check_total",{**args,"amounts":[invalid]})["ok"])
+
     def test_workspace(self):
         with tempfile.TemporaryDirectory() as d:
             p=pathlib.Path(d)

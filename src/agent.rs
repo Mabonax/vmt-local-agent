@@ -418,7 +418,9 @@ fn run_inner(
     ));
     let mut evidence = crate::factual_evidence::EvidenceRegister::new(user_request);
     // Strict mode is explicit opt-in. Do not silently change ordinary reports.
-    let strict_evidence_report = user_request.to_lowercase().starts_with("evidence-only report:");
+    let strict_evidence_report = user_request
+        .to_lowercase()
+        .starts_with("evidence-only report:");
     if strict_evidence_report {
         messages[0]["content"] = json!(format!(
             "{}\nEvidence-only report mode: use tools to retrieve exact citations as needed. Your final message must be a JSON array of integer evidence IDs, not prose. The host renders the cited excerpts. This mode returns text only; do not create or modify artifacts.",
@@ -519,15 +521,24 @@ fn run_inner(
                 (action.tool == "tool_pack_call")
                     .then(|| action.args["tool"].as_str().unwrap_or("").to_owned())
             });
-            let allowed = matches!(
-                action.tool.as_str(),
-                "discover_tools" | "tool_schema"
-            ) || matches!(
-                canonical.as_deref(),
-                Some("math.calculate" | "knowledge.search" | "knowledge.citation" | "research.find" | "research.citation" | "research.sources" | "knowledge.documents")
-            );
+            let allowed = matches!(action.tool.as_str(), "discover_tools" | "tool_schema")
+                || matches!(
+                    canonical.as_deref(),
+                    Some(
+                        "math.calculate"
+                            | "finance.check_total"
+                            | "knowledge.search"
+                            | "knowledge.citation"
+                            | "research.find"
+                            | "research.citation"
+                            | "research.sources"
+                            | "knowledge.documents"
+                    )
+                );
             if !allowed {
-                bail!("Evidence-only report mode permits only discovery, retrieval and calculation. No rejected action was executed.");
+                bail!(
+                    "Evidence-only report mode permits only discovery, retrieval and calculation. No rejected action was executed."
+                );
             }
         }
         if action.kind == "tool" {
@@ -553,18 +564,18 @@ fn run_inner(
                     .map_err(anyhow::Error::from)
                     .and_then(|ids| evidence.render_report(&ids));
                 match report {
-                    Ok(report) => {
+                    Ok(report) if unresolved.is_empty() && denials == 0 => {
                         journal.finish("completed")?;
                         let _ = tx.send(Event::Final(report));
                         ctx.request_repaint();
                         return Ok(());
                     }
-                    Err(_) if corrections < 2 => {
+                    _ if corrections < 2 => {
                         corrections += 1;
                         messages.push(json!({"role":"user","content":format!("Return only a JSON array of existing unique evidence IDs as your final message. {}", evidence.context())}));
                         continue;
                     }
-                    Err(_) => bail!("Evidence-only report incomplete: invalid evidence selection."),
+                    _ => bail!("Evidence-only report incomplete: invalid selection or unresolved operations."),
                 }
             }
             let assessment = contract.assess(&created_artifacts, &formatted_documents, tool_count);

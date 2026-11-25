@@ -114,6 +114,43 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "finance.check_total",
+      "description": "Check exact decimal monetary total of signed line amounts in a single currency; inputs are not verified facts",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "enum": [
+              "ZAR",
+              "USD",
+              "EUR",
+              "GBP"
+            ]
+          },
+          "amounts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 32
+            }
+          },
+          "claimed_total": {
+            "type": "string",
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "currency",
+          "amounts",
+          "claimed_total"
+        ],
+        "additionalProperties": false
+      }
     }
   ]
 }

@@ -39,7 +39,11 @@ impl EvidenceRegister {
         }
         if self.records.len() >= MAX_RECORDS {
             // Keep the original user request; evict the oldest retrieved record.
-            let index = usize::from(self.records.front().is_some_and(|r| r.origin == "user_request"));
+            let index = usize::from(
+                self.records
+                    .front()
+                    .is_some_and(|r| r.origin == "user_request"),
+            );
             self.records.remove(index);
         }
         self.records.push_back(Record {
@@ -73,6 +77,11 @@ impl EvidenceRegister {
                     self.add("calculation", &name, &result["value"].to_string());
                 }
             }
+            "finance.check_total" => {
+                if result["matches"].is_boolean() {
+                    self.add("calculation", &name, &result.to_string());
+                }
+            }
             "knowledge.citation" | "research.citation" => {
                 let id = result["document_id"]
                     .as_str()
@@ -93,7 +102,10 @@ impl EvidenceRegister {
     /// Render exact evidence excerpts, never model-authored factual prose.
     /// A valid reference establishes provenance, not semantic truth.
     pub fn render_report(&self, ids: &[usize]) -> anyhow::Result<String> {
-        anyhow::ensure!(!ids.is_empty() && ids.len() <= MAX_RECORDS, "Select 1–16 evidence IDs");
+        anyhow::ensure!(
+            !ids.is_empty() && ids.len() <= MAX_RECORDS,
+            "Select 1–16 evidence IDs"
+        );
         let mut seen = std::collections::BTreeSet::new();
         let mut sections = Vec::new();
         for id in ids {
