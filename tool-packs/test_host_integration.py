@@ -89,6 +89,14 @@ class HostIntegration(unittest.TestCase):
         selected=discover('Word report',{'office.docx'},budget_bytes=6000)
         self.assertEqual([v['definition']['name'] for v in selected],['office.docx'])
 
+    def test_discovery_filters_unavailable_before_ranking_and_workflow_policy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            session=Session({'state_directory':folder,'workspace':folder,'collection':'default','allowed':['office.preview','office.docx','document.add_cover','pdf.generate'],'soffice':None})
+            result=session.request({'action':'discover','query':'office.preview Word report','limit':1})
+            self.assertEqual([x['definition']['name'] for x in result['tools']],['office.docx'])
+            self.assertEqual(session.request({'action':'discover','query':'generate PDF report'})['workflows'],[])
+            session.close()
+
     def test_real_session_approval_replay_mutation_and_expiry(self):
         with tempfile.TemporaryDirectory() as folder:
             session=Session({'state_directory':folder,'workspace':folder,'collection':'default','allowed':['math.calculate'],'soffice':None})

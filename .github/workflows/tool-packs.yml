@@ -1,8 +1,10 @@
 name: Tool packs
 on:
   push:
-    branches: [main, codex/tool-pack-foundation, codex/local-agent-unified-integration]
-    paths: ['tool-packs/**', '.github/workflows/tool-packs.yml']
+    branches: [main, 'codex/**']
+    paths: ['tool-packs/**', 'src/**', 'scripts/**', 'skills/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/tool-packs.yml']
+  pull_request:
+    paths: ['tool-packs/**', 'src/**', 'scripts/**', 'skills/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/tool-packs.yml']
   workflow_dispatch:
 permissions:
   contents: read

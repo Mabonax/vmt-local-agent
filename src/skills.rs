@@ -37,22 +37,22 @@ const BUILTINS: &[(&str, &str, &str)] = &[
     (
         "word-documents",
         "Create and verify editable word-processing documents",
-        "Use the document workflow and list MCP servers. Prefer installed WordCraft via mcp_tools to discover the real tool schema; never invent MCP tool names. Compose sections, headings, tables and metadata, export to approved outputs, then inspect or reopen the actual file to verify structure. If no WordCraft server is available, produce a reviewed Markdown draft and state that DOCX export is unavailable.",
+        "For a NEW simple editable Word document, discover office.docx and use its exact schema. For professional layouts use the reviewed design composer when configured; for existing DOCX inspect it first and preserve the original, using document.add_cover only for a cover request. Never replace an existing document with an unrelated new one. Verify artifact metadata and render with office.preview or render_document when configured. WordCraft MCP is optional, not a prerequisite. Report missing capabilities and unverified content or layout explicitly.",
     ),
     (
         "pdf-documents",
         "Generate or process PDFs using verified native tools",
-        "Use the document workflow. Discover PdfCraft tools with mcp_tools before mcp_call. For layout-heavy publishing use DesignCraft then PdfCraft for verification. Reopen exports, inspect page count/layout and protect source inputs. Do not invent successful PDF export or claim OCR without actual tool results.",
+        "Discover pdf.generate or workflow.run with the fixed pdf_preview template for new simple PDFs. Use pdf.inspect, pdf.extract_text, pdf.split, pdf.merge and pdf.render on registered artifact IDs; import reviewed existing files when necessary. Use reviewed Office or design rendering for richer layouts when configured. PdfCraft MCP is optional. Reopen exports, verify page count and preserve source inputs. No OCR claim without actual OCR evidence.",
     ),
     (
         "spreadsheets",
         "Create validated data spreadsheets and workbooks",
-        "Use GridCraft MCP if installed; discover schemas first. Define columns, types, formulas and totals, then create a reviewed export. Verify formula recalculation, sample cells, output file, and input data accuracy. If unavailable, offer CSV via reviewed file tools, not a fabricated XLSX.",
+        "Discover office.xlsx for a new editable workbook of literal values. Define headers, rows and totals from supplied data; validate calculations separately. The local producer does not implement formula authoring or recalculation. GridCraft MCP is optional for advanced operations if installed and reviewed. Verify actual workbook output and render when available. Offer CSV only if workbook generation is unavailable or requested.",
     ),
     (
         "presentations",
         "Create and verify slide decks",
-        "Use DeckCraft MCP if installed, inspect available operations before calling. Plan slide sequence and page dimensions, then export and verify the file. Never claim images, charts or presentations exist without a saved file and read-back.",
+        "Discover office.pptx for a new simple editable deck or the reviewed compose_v2 design adapter for richer layouts when configured. Plan slide sequence, hierarchy and content density; verify actual output and render every supported slide. DeckCraft MCP is optional. Never claim images, charts or presentations exist without actual output evidence.",
     ),
     (
         "artcraft-suite",
@@ -192,6 +192,20 @@ mod tests {
         assert!(catalog().contains("rust-development"));
         assert!(load("rust-development").unwrap().contains("cargo test"));
     }
+    #[test]
+    fn document_guidance_prefers_integrated_local_tools() {
+        for (id, capability) in [
+            ("word-documents", "office.docx"),
+            ("pdf-documents", "workflow.run"),
+            ("spreadsheets", "office.xlsx"),
+            ("presentations", "office.pptx"),
+        ] {
+            let guidance = load(id).unwrap();
+            assert!(guidance.contains(capability));
+            assert!(guidance.contains("optional"));
+        }
+    }
+
     #[test]
     fn user_skills_are_bounded_utf8_reference_data() {
         let dir = tempfile::tempdir().unwrap();
