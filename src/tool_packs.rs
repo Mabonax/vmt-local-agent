@@ -26,6 +26,7 @@ const SOURCES: &[(&str, &[u8])] = sources![
     "session_worker.py",
     "host_adapter.py",
     "document_cover.py",
+    "document_edit.py",
     "host-catalog.json",
     "dispatch.py",
     "execution.py",
@@ -94,7 +95,7 @@ mod tests {
     #[test]
     fn registered_aliases_are_unique_and_host_transport_is_not_a_capability() {
         let entries = catalog();
-        assert_eq!(entries.len(), 59);
+        assert_eq!(entries.len(), 60);
         let aliases: std::collections::BTreeSet<_> =
             entries.keys().map(|name| alias(name)).collect();
         assert_eq!(aliases.len(), entries.len());
@@ -544,7 +545,7 @@ pub fn prepare(
     }
     let input_path: Option<String> = if matches!(
         tool.as_str(),
-        "artifact.import" | "knowledge.ingest" | "document.add_cover"
+        "artifact.import" | "knowledge.ingest" | "document.add_cover" | "document.replace_text"
     ) {
         Some(
             arguments["path"]
@@ -625,6 +626,7 @@ pub fn mutates(plan: &Plan) -> bool {
             | "knowledge.ingest"
             | "workflow.run"
             | "document.add_cover"
+            | "document.replace_text"
     )
 }
 pub fn review(plan: &Plan) -> String {
@@ -724,6 +726,17 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         result["ok"] == true,
         "Tool rejected input or failed; no success may be claimed"
     );
+    if plan.tool == "document.replace_text" {
+        ensure!(
+            result["result"]["preservation"]["source_sha256"].as_str()
+                == plan.input_sha256.as_deref()
+                && result["result"]["preservation"]["authorised_text_only"] == true
+                && result["result"]["preservation"]["unchanged_package_parts"] == true
+                && result["result"]["preservation"]["replacements"]
+                    == plan.arguments["expected_count"],
+            "Document edit preservation verification failed"
+        );
+    }
     if plan.tool == "document.add_cover" {
         ensure!(
             result["result"]["preservation"]["source_sha256"].as_str()

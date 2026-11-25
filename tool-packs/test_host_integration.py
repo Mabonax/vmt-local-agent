@@ -34,6 +34,26 @@ class HostIntegration(unittest.TestCase):
         response=adapter.call('workflow.run',{'template':'pdf_preview','inputs':{'title':'test','body':'test'}})
         self.assertFalse(response['ok']);self.assertEqual(response['result']['status'],'failed')
 
+    def test_exact_docx_edit_preserves_package(self):
+        import io,zipfile
+        from docx import Document
+        from document_edit import replace_text
+        doc=Document();doc.add_paragraph('Budget 100');doc.add_table(rows=1,cols=1).cell(0,0).text='Keep table'
+        doc.sections[0].header.paragraphs[0].text='Keep header'
+        buf=io.BytesIO();doc.save(buf);source=buf.getvalue()
+        raw,proof=replace_text(source,'100','200',1)
+        reopened=Document(io.BytesIO(raw))
+        self.assertEqual(reopened.paragraphs[0].text,'Budget 200')
+        self.assertEqual(reopened.tables[0].cell(0,0).text,'Keep table')
+        self.assertEqual(reopened.sections[0].header.paragraphs[0].text,'Keep header')
+        self.assertTrue(proof['authorised_text_only'])
+        with zipfile.ZipFile(io.BytesIO(source)) as a,zipfile.ZipFile(io.BytesIO(raw)) as b:
+            self.assertTrue(all(a.read(n)==b.read(n) for n in a.namelist() if n!='word/document.xml'))
+        with self.assertRaises(ValueError):replace_text(source,'100','200',2)
+        doc=Document();p=doc.add_paragraph();p.add_run('Bud');p.add_run('get')
+        buf=io.BytesIO();doc.save(buf)
+        with self.assertRaises(ValueError):replace_text(buf.getvalue(),'Budget','Total',1)
+
     def test_generated_catalog_matches_reviewed_source(self):
         path=pathlib.Path(__file__).parent/'host-catalog.json'
         self.assertEqual(json.loads(path.read_text()),{name:item['definition'] for name,item in catalog().items()})
@@ -81,7 +101,7 @@ class HostIntegration(unittest.TestCase):
 
     def test_model_catalog_excludes_host_transport_and_binary_envelopes(self):
         entries=catalog()
-        self.assertEqual(len(entries),59)
+        self.assertEqual(len(entries),60)
         self.assertFalse({'approve','export','call','init'} & entries.keys())
         for item in entries.values():
             if item['definition']['name'] in ('pdf.inspect','pdf.render','image.inspect'):

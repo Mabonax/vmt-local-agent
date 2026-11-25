@@ -37,7 +37,7 @@ const BUILTINS: &[(&str, &str, &str)] = &[
     (
         "word-documents",
         "Create and verify editable word-processing documents",
-        "For a NEW simple editable Word document, discover office.docx and use its exact schema. For professional layouts use the reviewed design composer when configured; for existing DOCX inspect it first and preserve the original, using document.add_cover only for a cover request. Never replace an existing document with an unrelated new one. Verify artifact metadata and render with office.preview or render_document when configured. WordCraft MCP is optional, not a prerequisite. Report missing capabilities and unverified content or layout explicitly.",
+        "For a NEW simple editable Word document, discover office.docx and use its exact schema. For professional layouts use the reviewed design composer when configured; for existing DOCX inspect it first and preserve the original, using document.add_cover only for a cover request and document.replace_text for exact single-run replacements with an explicit expected count; the latter returns a new artifact, not an overwritten file. Never replace an existing document with an unrelated new one. Verify artifact metadata and render with office.preview or render_document when configured. WordCraft MCP is optional, not a prerequisite. Report missing capabilities and unverified content or layout explicitly.",
     ),
     (
         "pdf-documents",

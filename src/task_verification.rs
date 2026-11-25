@@ -245,6 +245,7 @@ pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<S
             name,
             "office.docx"
                 | "document.add_cover"
+                | "document.replace_text"
                 | "office.xlsx"
                 | "office.pptx"
                 | "pdf.generate"
@@ -277,7 +278,7 @@ pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<S
         }
         // Count requested deliverables, not nested preview or input metadata.
         let output = match canonical.as_deref() {
-            Some("document.add_cover") => &result["result"]["artifact"],
+            Some("document.add_cover" | "document.replace_text") => &result["result"]["artifact"],
             Some("workflow.run") => &result["result"]["outputs"]["document"],
             _ => &result["result"],
         };

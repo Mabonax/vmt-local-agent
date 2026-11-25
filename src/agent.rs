@@ -575,7 +575,9 @@ fn run_inner(
                         messages.push(json!({"role":"user","content":format!("Return only a JSON array of existing unique evidence IDs as your final message. {}", evidence.context())}));
                         continue;
                     }
-                    _ => bail!("Evidence-only report incomplete: invalid selection or unresolved operations."),
+                    _ => bail!(
+                        "Evidence-only report incomplete: invalid selection or unresolved operations."
+                    ),
                 }
             }
             let assessment = contract.assess(&created_artifacts, &formatted_documents, tool_count);

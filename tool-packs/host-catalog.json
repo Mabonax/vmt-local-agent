@@ -328,6 +328,41 @@
       "additionalProperties": false
     }
   },
+  "document.replace_text": {
+    "name": "document.replace_text",
+    "description": "Replace exact text within simple body Word text runs, require expected match count, preserve other package parts and register a new DOCX artifact; no overwrite or visual certification",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "old_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "new_text": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "expected_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "path",
+        "old_text",
+        "new_text",
+        "expected_count"
+      ],
+      "additionalProperties": false
+    }
+  },
   "finance.check_total": {
     "name": "finance.check_total",
     "description": "Check exact decimal monetary total of signed line amounts in a single currency; inputs are not verified facts",

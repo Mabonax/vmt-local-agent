@@ -18,6 +18,7 @@ DEPENDENCIES={
  "pdf.render":("pypdfium2","PIL"), "image.inspect":("PIL",), "image.compare":("PIL",)
 }
 ALIASES={
+ "document.replace_text":"edit replace exact text existing word docx preserve content revision",
  "document.add_cover":"add insert cover page existing cv template resume docx preserve original save",
  "office.preview":"word excel powerpoint docx xlsx pptx office preview convert render",
  "artifact.import":"import workspace document file image artifact",
@@ -92,6 +93,8 @@ def catalog():
         tools[name]={'definition':{'name':name,'description':name.replace('.',' ')+' using host-owned workspace, reviewed input snapshots or a fixed workflow','input_schema':copy.deepcopy(schema)},'category':'host','dependencies':('pypdfium2','pypdf','PIL') if name=='office.preview' else ()}
     tools['document.add_cover']['definition']['description']='Add one cover to an existing DOCX, preserve the original CV, render all pages, register artifacts and save a NEW workspace DOCX in one exact review. Uses existing identity/placeholders; no rewritten CV or invented facts.'
     tools['document.add_cover']['dependencies']=('docx','lxml','pypdfium2','PIL')
+    tools['document.replace_text']['definition']['description']="Replace exact text within simple body Word text runs, require expected match count, preserve other package parts and register a new DOCX artifact; no overwrite or visual certification"
+    tools['document.replace_text']['dependencies']=('docx','lxml')
     return tools
 
 def tokens(value):

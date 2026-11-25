@@ -24,6 +24,7 @@ def validate_input_office(path):
                         raise ValueError('Formula workbooks require a separate reviewed evaluation path')
 
 SCHEMAS={
+    'document.replace_text':{"type":"object","properties":{"path":{"type":"string","minLength":1,"maxLength":240},"old_text":{"type":"string","minLength":1,"maxLength":500},"new_text":{"type":"string","maxLength":500},"expected_count":{"type":"integer","minimum":1,"maximum":100}},"required":["path","old_text","new_text","expected_count"],"additionalProperties":False},
     'document.add_cover':obj({'path':PATH,'output':PATH}),
     'workspace.metadata':obj({'path':PATH}),
     'workspace.sha256':obj({'path':PATH}),
@@ -87,6 +88,16 @@ class HostAdapter:
             result['text_diff']=''.join(difflib.unified_diff(a.splitlines(True),b.splitlines(True),fromfile='previous',tofile='current'))[:8000]
             result['limitation']='Bounded text and byte comparison; inspect rendered pages for visual changes.'
             return {'ok':True,'result':result}
+        if name=='document.replace_text':
+            if self.input_bytes is None: raise PermissionError('Reviewed input snapshot required')
+            if pathlib.Path(args['path']).suffix.lower()!='.docx': raise ValueError('Expected DOCX input')
+            from document_edit import replace_text
+            with tempfile.TemporaryDirectory() as folder:
+                source=pathlib.Path(folder)/'source.docx';source.write_bytes(self.input_bytes)
+                validate_input_office(source)
+            raw,preservation=replace_text(self.input_bytes,args['old_text'],args['new_text'],args['expected_count'])
+            artifact=self.store.store({'extension':'docx','encoding':'base64','bytes':len(raw),'content':base64.b64encode(raw).decode('ascii')})
+            return {'ok':True,'result':{'artifact':artifact,'preservation':preservation}}
         if name=='document.add_cover':
             if self.input_bytes is None: raise PermissionError('Reviewed input snapshot required')
             if not self.soffice: raise ValueError('A reviewed LibreOffice renderer is required for cover verification')
