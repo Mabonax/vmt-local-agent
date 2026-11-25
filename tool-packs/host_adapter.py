@@ -24,6 +24,7 @@ def validate_input_office(path):
                         raise ValueError('Formula workbooks require a separate reviewed evaluation path')
 
 SCHEMAS={
+    'document.add_cover':obj({'path':PATH,'output':PATH}),
     'workspace.metadata':obj({'path':PATH}),
     'workspace.sha256':obj({'path':PATH}),
     'workspace.list':obj({'path':PATH}),
@@ -85,6 +86,18 @@ class HostAdapter:
             result['text_diff']=''.join(difflib.unified_diff(a.splitlines(True),b.splitlines(True),fromfile='previous',tofile='current'))[:8000]
             result['limitation']='Bounded text and byte comparison; inspect rendered pages for visual changes.'
             return {'ok':True,'result':result}
+        if name=='document.add_cover':
+            if self.input_bytes is None: raise PermissionError('Reviewed input snapshot required')
+            if not self.soffice: raise ValueError('A reviewed LibreOffice renderer is required for cover verification')
+            from document_cover import add_cover
+            with tempfile.TemporaryDirectory() as folder:
+                source=pathlib.Path(folder)/'source.docx';source.write_bytes(self.input_bytes)
+                validate_input_office(source)
+            raw,preservation=add_cover(self.input_bytes)
+            artifact=self.store.store({'extension':'docx','encoding':'base64','bytes':len(raw),'content':base64.b64encode(raw).decode('ascii')})
+            preview=self.preview(artifact['artifact_id'])
+            if preview['structural_status']!='PASS':raise ValueError('Cover rendering requires layout correction before publishing')
+            return {'ok':True,'result':{'artifact':artifact,'preservation':preservation,'preview':preview,'visual_review':'PENDING'}}
         # Rust supplies the exact bounded bytes reviewed by the operator. Never
         # reopen the model's path after approval or accept bytes from model args.
         if self.input_bytes is None: raise PermissionError('Reviewed input snapshot required')

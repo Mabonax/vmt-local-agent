@@ -92,7 +92,7 @@ class Session:
             from discovery import discover,match_workflows
             allowed=self.allowed if request.get('internet_enabled') else self.allowed-{'web.fetch'}
             selected=discover(request['query'],set(allowed),limit=request.get('limit',6),budget_bytes=request.get('budget_bytes',6000))
-            if not self.soffice: selected=[x for x in selected if x['definition']['name']!='office.preview']
+            if not self.soffice: selected=[x for x in selected if x['definition']['name'] not in ('office.preview','document.add_cover')]
             return {'tools':selected,'workflows':match_workflows(request['query'],{'pdf_preview'})}
         if action=='status':
             from discovery import catalog,missing

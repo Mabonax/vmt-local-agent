@@ -18,6 +18,7 @@ DEPENDENCIES={
  "pdf.render":("pypdfium2","PIL"), "image.inspect":("PIL",), "image.compare":("PIL",)
 }
 ALIASES={
+ "document.add_cover":"add insert cover page existing cv template resume docx preserve original save",
  "office.preview":"word excel powerpoint docx xlsx pptx office preview convert render",
  "artifact.import":"import workspace document file image artifact",
  "artifact.compare":"compare revision versions document changes difference",
@@ -88,6 +89,8 @@ def catalog():
         tools[name]={"definition":{"name":name,"description":description,"input_schema":copy.deepcopy(schema)},"category":"knowledge","dependencies":()}
     for name,schema in HOST_SCHEMAS.items():
         tools[name]={'definition':{'name':name,'description':name.replace('.',' ')+' using host-owned workspace, reviewed input snapshots or a fixed workflow','input_schema':copy.deepcopy(schema)},'category':'host','dependencies':('pypdfium2','pypdf','PIL') if name=='office.preview' else ()}
+    tools['document.add_cover']['definition']['description']='Add one cover to an existing DOCX, preserve the original CV, render all pages, register artifacts and save a NEW workspace DOCX in one exact review. Uses existing identity/placeholders; no rewritten CV or invented facts.'
+    tools['document.add_cover']['dependencies']=('docx','lxml','pypdfium2','PIL')
     return tools
 
 def tokens(value):

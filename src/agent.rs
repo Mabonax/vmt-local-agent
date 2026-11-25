@@ -261,6 +261,13 @@ fn run_inner(
     ctx: &eframe::egui::Context,
 ) -> Result<()> {
     let workspace = Workspace::new(root)?;
+    let request = history
+        .last()
+        .map(|entry| entry.content.as_str())
+        .unwrap_or("");
+    if crate::document_cover::requested(request) {
+        return crate::document_cover::run(settings, &workspace, request, tx, cancel, ctx);
+    }
     let mut permissions = crate::task_permissions::TaskPermissions::new(
         &workspace,
         settings.task_permission_mode == "routine",

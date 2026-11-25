@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod clipboard;
 pub mod design_tools;
+pub mod document_cover;
 pub mod document_trial;
 pub mod execution;
 pub mod knowledge;

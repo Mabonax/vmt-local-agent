@@ -190,6 +190,7 @@ pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<S
         matches!(
             name,
             "office.docx"
+                | "document.add_cover"
                 | "office.xlsx"
                 | "office.pptx"
                 | "pdf.generate"

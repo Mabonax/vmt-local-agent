@@ -25,6 +25,7 @@ macro_rules! sources { ($($name:literal),* $(,)?) => { &[$(($name, include_bytes
 const SOURCES: &[(&str, &[u8])] = sources![
     "session_worker.py",
     "host_adapter.py",
+    "document_cover.py",
     "host-catalog.json",
     "dispatch.py",
     "execution.py",
@@ -67,9 +68,33 @@ fn digest(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn covered_document_publication_rejects_overwrite_traversal_and_non_docx() {
+        let directory = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(directory.path()).unwrap();
+        fs::write(directory.path().join("CV.docx"), b"fixture").unwrap();
+        assert!(
+            cover_destination(
+                &ws,
+                &json!({"path":"CV.docx","output":"CV_With_Cover.docx"})
+            )
+            .is_ok()
+        );
+        for output in [
+            "CV.docx",
+            "../escape.docx",
+            "missing/out.docx",
+            "payload.ps1",
+        ] {
+            assert!(
+                cover_destination(&ws, &json!({"path":"CV.docx","output":output})).is_err(),
+                "{output}"
+            );
+        }
+    }
+    #[test]
     fn registered_aliases_are_unique_and_host_transport_is_not_a_capability() {
         let entries = catalog();
-        assert_eq!(entries.len(), 57);
+        assert_eq!(entries.len(), 58);
         let aliases: std::collections::BTreeSet<_> =
             entries.keys().map(|name| alias(name)).collect();
         assert_eq!(aliases.len(), entries.len());
@@ -503,7 +528,17 @@ pub fn prepare(
     }
     let config = config()?;
     verify_code()?;
-    let input_path: Option<String> = if tool == "artifact.import" || tool == "knowledge.ingest" {
+    if tool == "document.add_cover" {
+        cover_destination(workspace, &arguments)?;
+        ensure!(
+            config.soffice.is_some(),
+            "Configure LibreOffice before adding a verified cover page"
+        );
+    }
+    let input_path: Option<String> = if matches!(
+        tool.as_str(),
+        "artifact.import" | "knowledge.ingest" | "document.add_cover"
+    ) {
         Some(
             arguments["path"]
                 .as_str()
@@ -515,10 +550,10 @@ pub fn prepare(
     };
     let input_sha256 = if let Some(path) = &input_path {
         let path = workspace.resolve(path, false)?;
-        let limit = if tool == "artifact.import" {
-            700000
-        } else {
+        let limit = if tool == "knowledge.ingest" {
             400000
+        } else {
+            700000
         };
         Some(file_digest(&path, limit)?)
     } else {
@@ -581,6 +616,7 @@ pub fn mutates(plan: &Plan) -> bool {
             | "artifact.import"
             | "knowledge.ingest"
             | "workflow.run"
+            | "document.add_cover"
     )
 }
 pub fn review(plan: &Plan) -> String {
@@ -605,6 +641,9 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         "Reviewed runtime/workspace/collection changed"
     );
     verify_code()?;
+    if plan.tool == "document.add_cover" {
+        cover_destination(workspace, &plan.arguments)?;
+    }
     for (id, expected) in &plan.artifact_hashes {
         ensure!(
             artifact_metadata(workspace, id)?["sha256"].as_str() == Some(expected),
@@ -619,10 +658,10 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
             .read_to_end(&mut data)?;
         ensure!(
             data.len()
-                <= if plan.tool == "artifact.import" {
-                    700000
-                } else {
+                <= if plan.tool == "knowledge.ingest" {
                     400000
+                } else {
+                    700000
                 },
             "Reviewed input grew beyond its bound"
         );
@@ -639,7 +678,7 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         json!({"action":"approve","tool":plan.tool,"arguments":plan.arguments,"previous":plan.previous,"attachment":attachment}),
         cancel,
     )?;
-    let result = rpc(
+    let mut result = rpc(
         workspace,
         json!({"action":"call","tool":plan.tool,"arguments":plan.arguments,"previous":plan.previous,"approval":approval["approval"]}),
         cancel,
@@ -648,7 +687,85 @@ pub fn execute(workspace: &Workspace, plan: &Plan, cancel: &Arc<AtomicBool>) -> 
         result["ok"] == true,
         "Tool rejected input or failed; no success may be claimed"
     );
+    if plan.tool == "document.add_cover" {
+        ensure!(
+            result["result"]["preservation"]["source_sha256"].as_str()
+                == plan.input_sha256.as_deref()
+                && result["result"]["preservation"]["original_body_preserved"] == true
+                && result["result"]["preservation"]["unchanged_package_parts"] == true,
+            "CV preservation verification failed"
+        );
+        let artifact = &result["result"]["artifact"];
+        let id = artifact["artifact_id"]
+            .as_str()
+            .context("Missing covered CV artifact")?;
+        let value = rpc(
+            workspace,
+            json!({"action":"export","artifact_id":id}),
+            cancel,
+        )?;
+        let bytes = STANDARD.decode(
+            value["content"]
+                .as_str()
+                .context("Missing covered CV bytes")?,
+        )?;
+        ensure!(
+            bytes.len() <= 700000
+                && value["metadata"]["extension"] == "docx"
+                && value["metadata"]["sha256"] == digest(&bytes)
+                && artifact["sha256"] == digest(&bytes),
+            "Covered CV integrity failure"
+        );
+        ensure!(
+            !cancel.load(Ordering::Relaxed),
+            "Cancelled before saving covered CV"
+        );
+        let destination = cover_destination(workspace, &plan.arguments)?;
+        let mut file = tempfile::NamedTempFile::new_in(
+            destination.parent().context("Missing output parent")?,
+        )?;
+        file.write_all(&bytes)?;
+        file.as_file().sync_all()?;
+        cover_destination(workspace, &plan.arguments)?;
+        file.persist_noclobber(&destination)?;
+        ensure!(
+            file_digest(&destination, 700000)? == digest(&bytes),
+            "Covered CV read-back verification failed"
+        );
+        result["result"]["created"] = plan.arguments["output"].clone();
+        result["result"]["sha256"] = json!(digest(&bytes));
+        result["result"]["saved_to_workspace"] = json!(true);
+    }
     Ok(serde_json::to_string_pretty(&result)?)
+}
+
+fn cover_destination(workspace: &Workspace, args: &Value) -> Result<PathBuf> {
+    let input = args["path"]
+        .as_str()
+        .context("Existing DOCX path required")?;
+    let output = args["output"]
+        .as_str()
+        .context("New DOCX output required")?;
+    ensure!(
+        Path::new(input)
+            .extension()
+            .is_some_and(|s| s.eq_ignore_ascii_case("docx"))
+            && Path::new(output)
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("docx")),
+        "Cover input and output must be DOCX files"
+    );
+    workspace.resolve(input, false)?;
+    let destination = workspace.resolve(output, true)?;
+    ensure!(
+        !destination.exists(),
+        "Cover output already exists; choose a new filename"
+    );
+    ensure!(
+        destination.parent().is_some_and(Path::is_dir),
+        "Cover output parent must already exist"
+    );
+    Ok(destination)
 }
 
 #[cfg(windows)]

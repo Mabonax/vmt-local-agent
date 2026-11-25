@@ -81,7 +81,7 @@ class HostIntegration(unittest.TestCase):
 
     def test_model_catalog_excludes_host_transport_and_binary_envelopes(self):
         entries=catalog()
-        self.assertEqual(len(entries),57)
+        self.assertEqual(len(entries),58)
         self.assertFalse({'approve','export','call','init'} & entries.keys())
         for item in entries.values():
             if item['definition']['name'] in ('pdf.inspect','pdf.render','image.inspect'):

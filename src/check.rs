@@ -26,6 +26,7 @@ fn main() -> anyhow::Result<()> {
                 project,
                 request,
                 raw.iter().any(|v| v == "--json"),
+                raw.iter().any(|v| v == "--deny"),
             );
         }
         "--tool-pack-run" | "--tool-pack-batch" => {

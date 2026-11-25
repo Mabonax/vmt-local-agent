@@ -16,7 +16,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub fn run(model: &str, project: &str, request_file: &str, json_protocol: bool) -> Result<()> {
+pub fn run(
+    model: &str,
+    project: &str,
+    request_file: &str,
+    json_protocol: bool,
+    deny_all: bool,
+) -> Result<()> {
     let workspace = Workspace::new(project)?;
     let local = std::env::current_dir()?.join(".local").canonicalize()?;
     ensure!(
@@ -28,6 +34,11 @@ pub fn run(model: &str, project: &str, request_file: &str, json_protocol: bool) 
         "Synthetic trials require a .local profile"
     );
     let request = fs::read_to_string(request_file)?;
+    let planner = if crate::document_cover::requested(&request) {
+        "fixed-document-cover"
+    } else {
+        "local-model"
+    };
     ensure!(request.len() <= 12000, "Trial request too long");
     let before = tool_packs::artifacts(&workspace)?;
     let settings = Settings {
@@ -64,37 +75,42 @@ pub fn run(model: &str, project: &str, request_file: &str, json_protocol: bool) 
     let mut answer = String::new();
     let mut errors = vec![];
     let mut denials = 0;
+    let mut approvals = 0;
     loop {
         if started.elapsed() > Duration::from_secs(195) {
             cancel.store(true, Ordering::Relaxed);
         }
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(Event::Approval(review)) => {
-                let allow = match &review.proposal {
-                    Proposal::ToolPack { plan } => matches!(
-                        plan.tool.as_str(),
-                        "office.docx"
-                            | "office.xlsx"
-                            | "office.pptx"
-                            | "office.preview"
-                            | "pdf.generate"
-                            | "pdf.render"
-                            | "artifact.inspect"
-                            | "artifact.hash"
-                            | "workflow.run"
-                            | "knowledge.search"
-                            | "knowledge.citation"
-                            | "knowledge.documents"
-                            | "knowledge.statistics"
-                            | "math.calculate"
-                    ),
-                    Proposal::Design { plan } => {
-                        matches!(plan.request.operation.as_str(), "palette" | "contrast")
-                    }
-                    _ => false,
-                };
+                let allow = !deny_all
+                    && match &review.proposal {
+                        Proposal::ToolPack { plan } => matches!(
+                            plan.tool.as_str(),
+                            "office.docx"
+                                | "document.add_cover"
+                                | "office.xlsx"
+                                | "office.pptx"
+                                | "office.preview"
+                                | "pdf.generate"
+                                | "pdf.render"
+                                | "artifact.inspect"
+                                | "artifact.hash"
+                                | "workflow.run"
+                                | "knowledge.search"
+                                | "knowledge.citation"
+                                | "knowledge.documents"
+                                | "knowledge.statistics"
+                                | "math.calculate"
+                        ),
+                        Proposal::Design { plan } => {
+                            matches!(plan.request.operation.as_str(), "palette" | "contrast")
+                        }
+                        _ => false,
+                    };
                 if !allow {
                     denials += 1;
+                } else {
+                    approvals += 1;
                 }
                 println!(
                     "Review {}: {}",
@@ -128,7 +144,7 @@ pub fn run(model: &str, project: &str, request_file: &str, json_protocol: bool) 
         .join()
         .map_err(|_| anyhow::anyhow!("Trial worker panic"))?;
     let after = tool_packs::artifacts(&workspace)?;
-    let report = json!({"model":model,"context_tokens":16384,"output_tokens":2048,"seconds":started.elapsed().as_secs_f64(),"activity":activity,"answer":answer,"errors":errors,"denials":denials,"artifacts_before":before,"artifacts_after":after});
+    let report = json!({"model":model,"planner":planner,"context_tokens":16384,"output_tokens":2048,"seconds":started.elapsed().as_secs_f64(),"activity":activity,"answer":answer,"errors":errors,"approvals":approvals,"denials":denials,"artifacts_before":before,"artifacts_after":after});
     fs::write(
         workspace.root.join("model-trial.json"),
         serde_json::to_vec_pretty(&report)?,

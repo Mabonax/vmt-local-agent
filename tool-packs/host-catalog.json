@@ -1127,6 +1127,30 @@
       "additionalProperties": false
     }
   },
+  "document.add_cover": {
+    "name": "document.add_cover",
+    "description": "Add one cover to an existing DOCX, preserve the original CV, render all pages, register artifacts and save a NEW workspace DOCX in one exact review. Uses existing identity/placeholders; no rewritten CV or invented facts.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "path",
+        "output"
+      ],
+      "additionalProperties": false
+    }
+  },
   "workspace.metadata": {
     "name": "workspace.metadata",
     "description": "workspace metadata using host-owned workspace, reviewed input snapshots or a fixed workflow",
