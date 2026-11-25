@@ -374,6 +374,15 @@ fn run_inner(
             })?
         ));
     }
+    let competency_guidance =
+        crate::competencies::guidance(user_request, pack_discovery.as_ref());
+    if !competency_guidance.is_empty() {
+        messages[0]["content"] = json!(format!(
+            "{}\n{}",
+            messages[0]["content"].as_str().unwrap_or(""),
+            competency_guidance
+        ));
+    }
     // Older completed conversational turns are bounded. Each new task starts a fresh tool context.
     let previous = history.len().saturating_sub(1);
     let context_history = history
