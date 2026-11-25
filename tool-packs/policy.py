@@ -37,6 +37,13 @@ class PolicyHost:
             self._tokens[token]=(fingerprint(name,args,previous),now+60)
             return token
 
+    def active_approvals(self):
+        """Host-only live token IDs; purge expired approvals."""
+        with self._lock:
+            now=time.monotonic()
+            self._tokens={k:v for k,v in self._tokens.items() if v[1]>now}
+            return frozenset(self._tokens)
+
     def journal(self):
         with self._lock: return list(copy.deepcopy(self._journal))
 

@@ -182,6 +182,52 @@ pub fn requested_artifacts(request: &str) -> BTreeSet<String> {
     }
     required
 }
+/// Conservative explicit deliverable counts. This is not a general intent parser.
+pub fn artifact_requirements(request: &str) -> BTreeMap<String, usize> {
+    let mut required: BTreeMap<String, usize> = requested_artifacts(request)
+        .into_iter()
+        .map(|kind| (kind, 1))
+        .collect();
+    let lower = request.to_lowercase();
+    let words: Vec<_> = lower.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty()).collect();
+    for pair in words.windows(2) {
+        let count = match pair[0] {
+            "two" => Some(2),
+            "three" => Some(3),
+            "four" => Some(4),
+            "five" => Some(5),
+            "six" => Some(6),
+            "seven" => Some(7),
+            "eight" => Some(8),
+            "nine" => Some(9),
+            "ten" => Some(10),
+            other => other.parse::<usize>().ok().filter(|n| (1..=100).contains(n)),
+        };
+        let kind = match pair[1] {
+            "word" | "docx" => "docx",
+            "excel" | "xlsx" | "workbooks" => "xlsx",
+            "powerpoint" | "pptx" | "presentations" => "pptx",
+            "pdf" | "pdfs" => "pdf",
+            _ => continue,
+        };
+        if let (Some(count), Some(current)) = (count, required.get_mut(kind)) {
+            *current = (*current).max(count);
+        }
+    }
+    required
+}
+
+pub fn missing_artifacts(
+    required: &BTreeMap<String, usize>,
+    created: &BTreeMap<String, String>,
+) -> Vec<String> {
+    required.iter().filter_map(|(kind, count)| {
+        let actual = created.values().filter(|value| *value == kind).count();
+        (actual < *count).then(|| format!("{kind}: {actual}/{count}"))
+    }).collect()
+}
+
 pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<String, String> {
     let canonical = crate::tool_packs::canonical(tool).or_else(|| {
         (tool == "tool_pack_call").then(|| args["tool"].as_str().unwrap_or("").to_string())
@@ -196,7 +242,6 @@ pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<S
                 | "pdf.generate"
                 | "pdf.merge"
                 | "pdf.split"
-                | "office.preview"
                 | "workflow.run"
         )
     });
@@ -222,7 +267,13 @@ pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<S
                 }
             }
         }
-        visit(&result["result"], &mut found);
+        // Count requested deliverables, not nested preview or input metadata.
+        let output = match canonical.as_deref() {
+            Some("document.add_cover") => &result["result"]["artifact"],
+            Some("workflow.run") => &result["result"]["outputs"]["document"],
+            _ => &result["result"],
+        };
+        visit(output, &mut found);
     }
     if crate::design_tools::is_tool(tool)
         && let (Some(path), Some(sha)) = (result["created"].as_str(), result["sha256"].as_str())
@@ -258,6 +309,20 @@ mod tests {
         assert!(requested_artifacts("Create Word and Excel reports").contains("docx"));
         assert!(!requested_artifacts("Write a Python function to parse PDF").contains("pdf"));
     }
+    #[test]
+    fn counts_distinct_outputs_and_excludes_preview_derivatives() {
+        let required = artifact_requirements("Create three Word documents and two PDF reports");
+        assert_eq!(required["docx"], 3);
+        assert_eq!(required["pdf"], 2);
+        let doc = json!({"artifact_id":"a".repeat(32),"extension":"docx","sha256":"b".repeat(64)});
+        let pdf = json!({"artifact_id":"c".repeat(32),"extension":"pdf","sha256":"d".repeat(64)});
+        let result = json!({"ok":true,"result":{"artifact":doc,"preview":{"pdf":pdf}}});
+        let created = created_artifacts("pack__document_add_cover", &json!({}), &result);
+        assert_eq!(created.len(), 1);
+        assert_eq!(missing_artifacts(&required, &created), vec!["docx: 1/3", "pdf: 0/2"]);
+        assert!(created_artifacts("pack__office_preview", &json!({}), &result).is_empty());
+    }
+
     #[test]
     fn creation_and_content_editing_do_not_require_the_word_formatter() {
         assert!(!document_format_request(

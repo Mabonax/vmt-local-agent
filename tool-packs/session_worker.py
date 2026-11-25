@@ -102,10 +102,13 @@ class Session:
             return {'tools':[{'name':name,'category':v['category'],'missing_modules':missing(v['dependencies'])} for name,v in tools.items() if name in self.allowed], 'workspace_operations':3,'office_preview':bool(self.soffice),'collection':self.collection,'process_isolation':'bounded process tree and resource controls; no filesystem/network sandbox'}
         if action=='approve':
             policy=self.host()
-            token=policy.approve(request['tool'],request['arguments'],request.get('previous'))
+            live=policy.active_approvals()
+            self._snapshots={k:v for k,v in self._snapshots.items() if k in live}
+            self._designs={k:v for k,v in self._designs.items() if k in live}
             attachment=request.get('attachment')
             snapshot=base64.b64decode(attachment,validate=True) if attachment is not None else None
             if snapshot is not None and len(snapshot)>1048576: raise ValueError('Attachment exceeds limit')
+            token=policy.approve(request['tool'],request['arguments'],request.get('previous'))
             self._snapshots[token]=snapshot
             self._designs[token]=request.get('design')
             return {'approval':token}

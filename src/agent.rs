@@ -421,7 +421,7 @@ fn run_inner(
         history.last().map(|h| h.content.as_str()).unwrap_or(""),
     );
     let mut formatted_documents = BTreeSet::new();
-    let required_artifacts = crate::task_verification::requested_artifacts(user_request);
+    let required_artifacts = crate::task_verification::artifact_requirements(user_request);
     let mut created_artifacts = std::collections::BTreeMap::<String, String>::new();
     let mut corrections = 0;
     let mut pending = VecDeque::new();
@@ -521,14 +521,13 @@ fn run_inner(
             }
         }
         if action.kind == "final" {
-            let missing: Vec<_> = required_artifacts
-                .iter()
-                .filter(|kind| !created_artifacts.values().any(|value| value == *kind))
-                .cloned()
-                .collect();
+            let missing = crate::task_verification::missing_artifacts(
+                &required_artifacts,
+                &created_artifacts,
+            );
             if !missing.is_empty() && corrections < 2 {
                 corrections += 1;
-                messages.push(json!({"role":"user","content":format!("Runtime delivery verification: no new {} output has been verified for this task. Skill loading, reading an old artifact list, outlines and prose claims do not create a document. Use the host-selected producer with its exact schema and report its actual returned artifact reference, or state that the task is incomplete.",missing.join(", "))}));
+                messages.push(json!({"role":"user","content":format!("Runtime delivery verification: required output counts have not been met ({} verified/required). Skill loading, reading an old artifact list, outlines and prose claims do not create a document. Use the host-selected producer with its exact schema and report its actual returned artifact reference, or state that the task is incomplete.",missing.join(", "))}));
                 continue;
             }
             if document_request && formatted_documents.is_empty() && corrections < 2 {

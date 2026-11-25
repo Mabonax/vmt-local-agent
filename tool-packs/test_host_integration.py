@@ -97,6 +97,20 @@ class HostIntegration(unittest.TestCase):
             self.assertEqual(session.request({'action':'discover','query':'generate PDF report'})['workflows'],[])
             session.close()
 
+    def test_expired_approval_attachments_are_released(self):
+        with tempfile.TemporaryDirectory() as folder:
+            session=Session({'state_directory':folder,'workspace':folder,'collection':'default','allowed':['math.calculate'],'soffice':None})
+            try:
+                args={'action':'approve','tool':'math.calculate','arguments':{'operation':'add','a':1,'b':2},'attachment':base64.b64encode(b'test').decode()}
+                old=session.request(args)['approval']
+                policy=session.host()
+                policy._tokens[old]=(policy._tokens[old][0],time.monotonic()-1)
+                new=session.request(args)['approval']
+                self.assertNotIn(old,session._snapshots)
+                self.assertNotIn(old,session._designs)
+                self.assertIn(new,session._snapshots)
+            finally:session.close()
+
     def test_real_session_approval_replay_mutation_and_expiry(self):
         with tempfile.TemporaryDirectory() as folder:
             session=Session({'state_directory':folder,'workspace':folder,'collection':'default','allowed':['math.calculate'],'soffice':None})
