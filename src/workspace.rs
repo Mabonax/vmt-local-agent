@@ -56,6 +56,20 @@ impl Workspace {
     }
 
     pub fn resolve(&self, relative: &str, allow_missing: bool) -> Result<PathBuf> {
+        self.resolve_scoped(relative, allow_missing, false)
+    }
+    /// Host-only skill inventory/resource reads. The registry independently
+    /// verifies registration, package fingerprints and each resource's bytes.
+    /// Model project file tools always use resolve(), which blocks profile data.
+    pub(crate) fn resolve_registered_resource(&self, relative: &str) -> Result<PathBuf> {
+        self.resolve_scoped(relative, false, true)
+    }
+    fn resolve_scoped(
+        &self,
+        relative: &str,
+        allow_missing: bool,
+        registered_resource: bool,
+    ) -> Result<PathBuf> {
         ensure!(
             !relative.contains(':') && !relative.contains('\0'),
             "Use a relative project path without drive names or streams"
@@ -116,7 +130,8 @@ impl Workspace {
         let private_root = normalized(&crate::store::data_dir());
         let target = normalized(&out);
         ensure!(
-            target != private_root && !target.starts_with(&(private_root + "/")),
+            registered_resource
+                || (target != private_root && !target.starts_with(&(private_root + "/"))),
             "Local agent profile state is host-managed and unavailable to project file tools"
         );
         Ok(out)

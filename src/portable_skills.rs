@@ -147,7 +147,7 @@ fn inventory(root: &Path) -> Result<BTreeMap<String, String>> {
                 .to_str()
                 .context("Skill resource path must be UTF-8")?
                 .replace('\\', "/");
-            workspace.resolve(&relative, false)?;
+            workspace.resolve_registered_resource(&relative)?;
             let data = read_bounded(&path, MAX_RESOURCE)?;
             bytes += data.len();
             ensure!(bytes <= MAX_TREE, "Skill resource tree is too large");
@@ -348,7 +348,10 @@ impl Registry {
     /// Discovery and resource reads never call this execution boundary.
     pub(crate) fn adapter_script(&self, id: &str, path: &str) -> Result<(String, String)> {
         let (root, skill) = self.approved(id)?;
-        let data = read_bounded(&Workspace::new(root)?.resolve(path, false)?, MAX_RESOURCE)?;
+        let data = read_bounded(
+            &Workspace::new(root)?.resolve_registered_resource(path)?,
+            MAX_RESOURCE,
+        )?;
         ensure!(
             skill.files.get(path) == Some(&format!("{:x}", Sha256::digest(&data))),
             "Skill changed during adapter preparation"
@@ -395,7 +398,7 @@ impl Registry {
             .files
             .get(path)
             .context("Resource not in the reviewed inventory")?;
-        let resolved = Workspace::new(&root)?.resolve(path, false)?;
+        let resolved = Workspace::new(&root)?.resolve_registered_resource(path)?;
         let data = read_bounded(&resolved, MAX_RESOURCE)?;
         ensure!(
             &format!("{:x}", Sha256::digest(&data)) == expected,
