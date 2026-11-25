@@ -167,17 +167,17 @@ pub fn requested_artifacts(request: &str) -> BTreeSet<String> {
     }
     if words
         .iter()
-        .any(|w| matches!(*w, "xlsx" | "excel" | "workbook"))
+        .any(|w| matches!(*w, "xlsx" | "excel" | "workbook" | "workbooks"))
     {
         required.insert("xlsx".into());
     }
     if words
         .iter()
-        .any(|w| matches!(*w, "pptx" | "powerpoint" | "presentation"))
+        .any(|w| matches!(*w, "pptx" | "powerpoint" | "presentation" | "presentations"))
     {
         required.insert("pptx".into());
     }
-    if words.contains(&"pdf") {
+    if words.contains(&"pdf") || words.contains(&"pdfs") {
         required.insert("pdf".into());
     }
     required
@@ -189,8 +189,10 @@ pub fn artifact_requirements(request: &str) -> BTreeMap<String, usize> {
         .map(|kind| (kind, 1))
         .collect();
     let lower = request.to_lowercase();
-    let words: Vec<_> = lower.split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty()).collect();
+    let words: Vec<_> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
     for pair in words.windows(2) {
         let count = match pair[0] {
             "two" => Some(2),
@@ -202,7 +204,10 @@ pub fn artifact_requirements(request: &str) -> BTreeMap<String, usize> {
             "eight" => Some(8),
             "nine" => Some(9),
             "ten" => Some(10),
-            other => other.parse::<usize>().ok().filter(|n| (1..=100).contains(n)),
+            other => other
+                .parse::<usize>()
+                .ok()
+                .filter(|n| (1..=100).contains(n)),
         };
         let kind = match pair[1] {
             "word" | "docx" => "docx",
@@ -222,10 +227,13 @@ pub fn missing_artifacts(
     required: &BTreeMap<String, usize>,
     created: &BTreeMap<String, String>,
 ) -> Vec<String> {
-    required.iter().filter_map(|(kind, count)| {
-        let actual = created.values().filter(|value| *value == kind).count();
-        (actual < *count).then(|| format!("{kind}: {actual}/{count}"))
-    }).collect()
+    required
+        .iter()
+        .filter_map(|(kind, count)| {
+            let actual = created.values().filter(|value| *value == kind).count();
+            (actual < *count).then(|| format!("{kind}: {actual}/{count}"))
+        })
+        .collect()
 }
 
 pub fn created_artifacts(tool: &str, args: &Value, result: &Value) -> BTreeMap<String, String> {
@@ -319,7 +327,10 @@ mod tests {
         let result = json!({"ok":true,"result":{"artifact":doc,"preview":{"pdf":pdf}}});
         let created = created_artifacts("pack__document_add_cover", &json!({}), &result);
         assert_eq!(created.len(), 1);
-        assert_eq!(missing_artifacts(&required, &created), vec!["docx: 1/3", "pdf: 0/2"]);
+        assert_eq!(
+            missing_artifacts(&required, &created),
+            vec!["docx: 1/3", "pdf: 0/2"]
+        );
         assert!(created_artifacts("pack__office_preview", &json!({}), &result).is_empty());
     }
 

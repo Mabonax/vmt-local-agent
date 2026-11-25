@@ -409,7 +409,13 @@ fn run_inner(
     let mut failed_signatures = HashMap::<String, usize>::new();
     let mut steps_taken = 0;
     let _ = tx.send(Event::Note(format!("Task journal ID: {}", journal.id())));
-    let task_needs_tools = needs_tools(history.last().map(|h| h.content.as_str()).unwrap_or(""));
+    let task_needs_tools = needs_tools(user_request);
+    let contract = crate::task_contract::TaskContract::from_request(user_request, task_needs_tools);
+    messages[0]["content"] = json!(format!(
+        "{}\n{}",
+        messages[0]["content"].as_str().unwrap_or(""),
+        contract.guidance()
+    ));
     let mut tool_count = 0;
     let mut file_changes = 0;
     let mut commands = 0;
@@ -417,11 +423,7 @@ fn run_inner(
     let mut failures = 0;
     let mut denials = 0;
     let mut unresolved = crate::task_verification::Failures::default();
-    let document_request = crate::task_verification::document_format_request(
-        history.last().map(|h| h.content.as_str()).unwrap_or(""),
-    );
     let mut formatted_documents = BTreeSet::new();
-    let required_artifacts = crate::task_verification::artifact_requirements(user_request);
     let mut created_artifacts = std::collections::BTreeMap::<String, String>::new();
     let mut corrections = 0;
     let mut pending = VecDeque::new();
@@ -521,16 +523,15 @@ fn run_inner(
             }
         }
         if action.kind == "final" {
-            let missing = crate::task_verification::missing_artifacts(
-                &required_artifacts,
-                &created_artifacts,
-            );
+            let assessment =
+                contract.assess(&created_artifacts, &formatted_documents, tool_count);
+            let missing = &assessment.missing_artifacts;
             if !missing.is_empty() && corrections < 2 {
                 corrections += 1;
                 messages.push(json!({"role":"user","content":format!("Runtime delivery verification: required output counts have not been met ({} verified/required). Skill loading, reading an old artifact list, outlines and prose claims do not create a document. Use the host-selected producer with its exact schema and report its actual returned artifact reference, or state that the task is incomplete.",missing.join(", "))}));
                 continue;
             }
-            if document_request && formatted_documents.is_empty() && corrections < 2 {
+            if assessment.missing_formatter && corrections < 2 {
                 corrections += 1;
                 messages.push(json!({"role":"user","content":"Runtime verification: no formatted Word output has been verified. For an existing DOCX, use design_tool inspect_document, then format_document with a NEW DOCX output, preset cv and an accessible accent from colour-intelligence. A render creates only review images; a copied file is unchanged. If an action was denied, do not retry it. If you cannot produce and verify an output, report the task incomplete."}));
                 continue;
@@ -544,7 +545,7 @@ fn run_inner(
                 )}));
                 continue;
             }
-            if task_needs_tools && tool_count == 0 {
+            if assessment.missing_tool_evidence {
                 if step >= 2 {
                     bail!(
                         "The model returned a completion claim without inspecting the project. No actions were executed. Try a more specific task or another coding model."
@@ -565,13 +566,11 @@ fn run_inner(
             } else {
                 String::new()
             };
-            let incomplete = !missing.is_empty()
-                || !unresolved.is_empty()
-                || (document_request && formatted_documents.is_empty());
+            let incomplete = !assessment.complete() || !unresolved.is_empty();
             let mut answer = if incomplete {
                 crate::task_verification::incomplete(
                     &unresolved,
-                    document_request && formatted_documents.is_empty(),
+                    assessment.missing_formatter,
                     &formatted_documents,
                 )
             } else {

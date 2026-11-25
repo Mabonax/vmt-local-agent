@@ -14,6 +14,7 @@ pub mod projects;
 pub mod research;
 pub mod skills;
 pub mod store;
+pub mod task_contract;
 pub mod task_journal;
 pub mod task_permissions;
 pub mod task_verification;
