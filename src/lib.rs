@@ -9,6 +9,7 @@ pub mod factual_evidence;
 pub mod knowledge;
 pub mod mcp;
 pub mod memory;
+pub mod model_profile;
 pub mod ollama;
 pub mod policy;
 pub mod portable_skills;

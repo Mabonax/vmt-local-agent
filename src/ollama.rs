@@ -138,25 +138,8 @@ pub fn native_mode(settings: &Settings) -> Result<bool> {
         .send()?
         .error_for_status()?
         .json()?;
-    ensure!(
-        !settings.model.ends_with(":cloud")
-            && info["remote_host"].is_null()
-            && info["remote_model"].is_null()
-            && info["details"]["format"]
-                .as_str()
-                .is_some_and(|f| !f.is_empty()),
-        "This model is not a local weights model. Cloud runtimes are disabled."
-    );
-    let caps = info["capabilities"].as_array().cloned().unwrap_or_default();
-    ensure!(
-        caps.iter().any(|c| c.as_str() == Some("completion")),
-        "Select a chat/completion model rather than an embedding model"
-    );
-    Ok(match settings.protocol.as_str() {
-        "json" => false,
-        "native" => true,
-        _ => caps.iter().any(|c| c.as_str() == Some("tools")),
-    })
+    let profile = crate::model_profile::ModelProfile::from_local_show(&settings.model, &info)?;
+    Ok(profile.native_mode(&settings.protocol))
 }
 
 fn design_properties() -> Value {

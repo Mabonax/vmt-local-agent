@@ -447,6 +447,38 @@ pub fn diff(proposal: &Proposal) -> String {
     }
 }
 
+// Pass only common OS/build environment entries. This is not filesystem
+// isolation: an approved command can still access files as the current user.
+fn configure_command_environment(cmd: &mut Command) {
+    cmd.env_clear();
+    for name in [
+        "PATH",
+        "SystemRoot",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "HOME",
+        "USERPROFILE",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "ProgramData",
+        "SystemDrive",
+        "LANG",
+        "LC_ALL",
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            cmd.env(name, value);
+        }
+    }
+}
+
 fn run_command(workspace: &Workspace, script: &str, cancel: &Arc<AtomicBool>) -> Result<String> {
     let mut cmd;
     #[cfg(windows)]
@@ -460,24 +492,21 @@ fn run_command(workspace: &Workspace, script: &str, cancel: &Arc<AtomicBool>) ->
     {
         cmd = Command::new("sh");
         cmd.args(["-c", script]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
     }
     cmd.current_dir(&workspace.root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    for name in [
-        "OLLAMA_API_KEY",
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "AWS_SECRET_ACCESS_KEY",
-        "GITHUB_TOKEN",
-        "GH_TOKEN",
-    ] {
-        cmd.env_remove(name);
-    }
+    configure_command_environment(&mut cmd);
     let mut child = cmd
         .spawn()
         .context("Could not start the approved command")?;
+    #[cfg(any(windows, unix))]
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
     for (label, pipe) in [
@@ -532,6 +561,10 @@ fn run_command(workspace: &Workspace, script: &str, cancel: &Arc<AtomicBool>) ->
                     .args(["/PID", &pid.to_string(), "/T", "/F"])
                     .creation_flags(0x08000000)
                     .output();
+            }
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
             }
             let _ = child.kill();
             let _ = child.wait();
