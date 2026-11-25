@@ -8,8 +8,71 @@ for processing hostile binary documents.
 ## Repository preservation and integration
 
 Repository: `Mabonax/vmt-local-agent`. Integration branch:
-`codex/local-agent-unified-integration`. No push, PR, merge into `main` or release
-publication was performed.
+`codex/local-agent-unified-integration`. The initial integration was local only.
+On 25 November the operator explicitly authorized publishing this branch, with
+no main merge, force push, PR or release. See the update below; final delivery
+reports the verified remote SHA and actual GitHub Actions status.
+
+## 25 November cover-page correction and publication verification
+
+The subsequent operator-reported CV-cover run exposed an unsupported edit: the
+model attempted `inspect_document`, `load_skill`, `read_file`, `design_tool` and
+`compose_document`, then created three unrelated private DOCX artifacts through
+the new-document producer. It never published the requested covered CV beside
+its source. Those artefact IDs did not prove that the original was edited. The
+per-operation broker correctly demanded reviews for separate writes, but the
+model's repeated plan made a simple request require repeated approval.
+
+The correction adds `document.add_cover` and an explicit existing-CV cover route.
+This is a fixed host workflow, not a claim of improved model reasoning. One
+operator review binds the exact source snapshot and new output and covers the
+bounded cover insertion, content/package preservation check, all-page rendering,
+private registration and atomic workspace save. Denial saves no output; a repeat
+chooses a new filename. Other actions retain their existing review requirements.
+No command/network grant or broad auto-approval was introduced.
+
+Original body elements, section properties and all package parts except
+`word/document.xml` remain unchanged; existing contact/name placeholders are
+copied rather than invented. Duplicate/signed packages, invalid or existing
+destinations and unsafe paths are rejected. The CV remains a user-editable DOCX.
+Source ambiguity stops before execution. This is a narrow front-page operation,
+not a general Word content editor or a factuality engine.
+
+Latest local results: **58 Rust library + 3 Rust integration + 50 Python host +
+35 pack unit + 1 pack acceptance wrapper = 147 passing test executions**. fmt,
+Clippy with warnings denied and the optimized Windows build passed. Original
+eight unified acceptance scenarios/two security checks remain separately
+recorded below. New `scripts/accept_cover_page.py` exercises the actual agent
+entry point and review broker against a staged copy of the requested CV:
+
+- Denial: one declined action, no saved CV.
+- Approved: one approval, no errors/denials, four rendered pages and a verified
+  new DOCX. The original three-page CV body and other package parts are retained.
+- Repeat: one approval, a new numbered output, previous output/source retained.
+- Visual inspection: all four tool-rendered PNGs and all four pages from the
+  packaged DOCX renderer were inspected. No clipping/overlap was observed.
+
+The catalogue now contains **58 capabilities** (32 leaves + 26 host operations).
+The older 57-capability/142-test counts below describe initial acceptance.
+Private CV copies, images, reports and fingerprints remain only in ignored local
+acceptance directories. They are not included in the source commit.
+
+Before publication, `.gitignore` was extended for private profile roots, virtual
+environments/bytecode, credentials/key files, model weights, recovery bundles,
+downloaded wheels and compiled programs. Tracked files and outgoing history were
+checked for sensitive path classes, large binary blobs and common credential/
+private-key patterns; no findings were detected at preflight. Normal AppData
+profiles and installed models live outside this repository. This pattern scan
+does not prove the absence of every possible secret format. The ignored audit
+report records ignore probes and object counts; it contains no credential values.
+
+Publication target:
+`https://github.com/Mabonax/vmt-local-agent/tree/codex/local-agent-unified-integration`.
+Only a normal upstream-setting branch push is authorized. GitHub Actions results
+must be read from the actual pushed commit, not inferred from local success.
+The Cognitive Orchestration Engine is the next phase, not implemented by this
+publication: factuality, task decomposition, structured generation, broader
+content-preservation gates, model profiling and reliable fallback remain open.
 
 | Item | Verified state |
 | --- | --- |

@@ -4,8 +4,8 @@ This directory is integrated with the Rust desktop through `src/tool_packs.rs`.
 The historical standalone foundation is preserved in Git at `58d5f61`; its
 incremental handoff notes no longer describe the current application.
 
-There are **32 execution tools and 57 host-callable capabilities**. The three
-workspace operations are included in 57. Native Rust tools, design adapters and
+There are **32 execution tools and 58 host-callable capabilities**. The three
+workspace operations are included in 58. Native Rust tools, design adapters and
 registered MCP tools remain additional, separate interfaces.
 
 | Category | Capabilities |
@@ -23,6 +23,7 @@ registered MCP tools remain additional, separate interfaces.
 | Research | `web.fetch`, `web.extract`, `research.sources`, `research.find`, `research.citation` |
 | Knowledge | `knowledge.search`, `knowledge.documents`, `knowledge.citation`, `knowledge.statistics` |
 | Host adapters | `workspace.metadata`, `workspace.sha256`, `workspace.list`, `artifact.import`, `knowledge.ingest`, `office.preview`, `artifact.compare`, `workflow.run` |
+| Existing document workflow | `document.add_cover` |
 
 ## Setup
 
@@ -51,6 +52,15 @@ Models use `pack__office_docx`-style native functions or `tool_pack_call` with
 Private pipe actions including `approve`, `export`, `init` and `receive_artifact`
 are never model capabilities. `workflow.run` selects the fixed `pdf_preview`
 template; arbitrary scripts and model-generated plans are unsupported.
+
+`document.add_cover` accepts `{path, output}` for an existing DOCX and a NEW
+workspace DOCX. One exact review covers byte-snapshot validation, a cover using
+existing identity/contact placeholders, unchanged original body/package proof,
+all-page preview, private artifact registration and atomic workspace publication.
+The Rust host alone writes the selected workspace output. The existing file is
+never overwritten. LibreOffice is required before this workflow is advertised.
+Agent mode routes an explicit matching CV-cover request through this fixed
+workflow instead of repeated model-selected inspection/composition attempts.
 
 The operator-only CLI can execute an exact reviewed request file:
 

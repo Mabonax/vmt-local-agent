@@ -9,9 +9,9 @@ model quality or full feature parity.
 
 The `codex/local-agent-unified-integration` branch incorporates remote tool-pack
 commit `58d5f6184baa7927ef7da1db578785a3fe46c4f3` into the existing desktop,
-skills, memory, MCP and review broker. It exposes **57 Python host capabilities**
-(32 execution tools plus 25 host operations), alongside the existing native tools.
-This is local development, not a published release.
+skills, memory, MCP and review broker. It exposes **58 Python host capabilities**
+(32 execution tools plus 26 host operations), alongside the existing native tools.
+This is integration development, not a published application release.
 
 Settings → **Tools & artifacts** provides dependency inventory, bounded discovery,
 exact action review, fixed PDF workflows, artifact opening/saving/previews,
@@ -41,7 +41,7 @@ Python venv outside the model's workspace, build with Cargo, and configure absol
 Python/LibreOffice paths in the same way. Linux execution has not been accepted
 on this Windows workstation.
 
-Current checks: **142 automated test executions pass**, plus eight integrated
+Current checks: **147 automated test executions pass**, plus eight integrated
 acceptance scenarios and two actual review/cancellation checks. Qwen 3.5 4B
 completed native document/workflow calls and cited knowledge retrieval at a
 16,384-token context. Generated report prose still needs factual review; two
@@ -51,6 +51,15 @@ complex autonomous authoring, and real Craft MCP acceptance remain outstanding.
 
 See the [integration audit](docs/audits/LOCAL_AGENT_UNIFIED_INTEGRATION.md) for
 commands, evidence, dependency decisions, security boundaries and limitations.
+
+For an existing CV, ask **“add cover page to this CV_Template”**. This uses a fixed
+workflow with one exact review for the source, new output, page rendering and
+artifact registration. It saves `CV_Template_With_Cover.docx` beside the source,
+retains existing names/contact placeholders and preserves all original body
+elements and other Office package parts. Repeats use a new numbered filename.
+Denying the action creates no new CV. This targeted workflow does not depend on
+model planning or portable skill loading; it does not certify general autonomous
+document editing. Ambiguous source documents require an explicit filename.
 
 ## Open the app
 

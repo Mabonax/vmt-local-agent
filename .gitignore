@@ -2,5 +2,49 @@
 /dist/
 /.local/
 /.env
+.env.*
+!.env.example
+!.env.*.example
 *.log
+
+# Private application profiles and local test/recovery state.
+/profiles/
+/private-profile/
+/tool-sessions/
+/task-journal/
+/sessions/
+/recovery/
+/acceptance-artifacts/
+/settings.json
+/projects.json
+/skill-libraries.json
+/tool-pack-runtime.json
+/design-runtime.json
+/mcp-servers.json
+
+# Python environments, bytecode and downloaded runtime packages.
+.venv/
+venv/
+tool-python-venv/
+__pycache__/
+*.py[cod]
+*.whl
+
+# Credentials, local model weights, recovery archives and compiled programs.
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.bundle
+*.exe
+*.dll
+*.pdb
+*.lib
+*.exp
 
